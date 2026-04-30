@@ -67,6 +67,12 @@ O app escolhe a conexao nesta ordem:
 - `SUPABASE_DB_URL_PRODUCTION`, quando `APP_ENV=production`.
 - `DATABASE_URL`, como fallback universal.
 
+## Secrets do Streamlit
+
+Para rodar no Streamlit, copie `.streamlit/secrets.example.toml` para `.streamlit/secrets.toml` no ambiente local ou configure os mesmos nomes no painel de secrets do Streamlit Cloud.
+
+O app le primeiro `st.secrets` e usa `.env` como fallback para scripts locais, como ingestao e migracoes.
+
 ## LLM e embeddings
 
 O gerador do plano usa Replicate com `REPLICATE_CHAT_MODEL=openai/gpt-4o-mini`.
