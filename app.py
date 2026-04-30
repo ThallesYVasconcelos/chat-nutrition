@@ -52,8 +52,101 @@ def _format_evidence_section(evidence: list[dict]) -> str:
 
 st.set_page_config(page_title="Nutri AI", page_icon="N", layout="wide")
 
-st.title("Nutri AI")
-st.caption("Base de recomendacoes para profissionais de nutricao, com RAG e trechos citados.")
+st.markdown(
+    """
+    <style>
+    .block-container {
+        padding-top: 2rem;
+        padding-bottom: 3rem;
+        max-width: 1180px;
+    }
+    .main-hero {
+        border: 1px solid #d8e2dc;
+        border-radius: 8px;
+        padding: 1.35rem 1.5rem;
+        background: linear-gradient(135deg, #f8fbf7 0%, #eef7f0 100%);
+        margin-bottom: 1rem;
+    }
+    .main-hero h1 {
+        font-size: 2rem;
+        margin: 0 0 .35rem 0;
+        letter-spacing: 0;
+    }
+    .main-hero p {
+        color: #41544a;
+        font-size: 1rem;
+        margin: 0;
+        max-width: 820px;
+    }
+    .metric-strip {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: .75rem;
+        margin: 1rem 0 1.25rem;
+    }
+    .work-card {
+        border: 1px solid #dce5df;
+        border-radius: 8px;
+        padding: .85rem 1rem;
+        background: #ffffff;
+    }
+    .work-card strong {
+        display: block;
+        color: #1f3329;
+        margin-bottom: .15rem;
+    }
+    .work-card span {
+        color: #53645a;
+        font-size: .92rem;
+    }
+    .source-chip {
+        display: inline-block;
+        border: 1px solid #cfe0d5;
+        border-radius: 999px;
+        padding: .2rem .55rem;
+        background: #f5faf6;
+        color: #294235;
+        font-size: .82rem;
+        margin: .1rem .2rem .1rem 0;
+    }
+    .section-note {
+        color: #53645a;
+        font-size: .95rem;
+        margin-bottom: 1rem;
+    }
+    div[data-testid="stTabs"] button p {
+        font-size: .95rem;
+        font-weight: 600;
+    }
+    div[data-testid="stExpander"] {
+        border-radius: 8px;
+        border-color: #dce5df;
+    }
+    .stButton > button {
+        border-radius: 8px;
+        font-weight: 600;
+    }
+    @media (max-width: 780px) {
+        .metric-strip {
+            grid-template-columns: 1fr;
+        }
+        .main-hero h1 {
+            font-size: 1.55rem;
+        }
+    }
+    </style>
+    <div class="main-hero">
+        <h1>Nutri AI</h1>
+        <p>Uma mesa de apoio para nutricionistas: consulte recomendações por tema, veja fontes oficiais e leve trechos rastreáveis para sua conduta, aula, orientação ou estudo de caso.</p>
+    </div>
+    <div class="metric-strip">
+        <div class="work-card"><strong>Consulta por tema</strong><span>Patologias, gestantes, infância, idoso, TEA e comportamento alimentar.</span></div>
+        <div class="work-card"><strong>Fontes à vista</strong><span>Cada resposta vem com documentos e trechos recuperados.</span></div>
+        <div class="work-card"><strong>Uso profissional</strong><span>Foco em síntese e orientação, não em substituir julgamento clínico.</span></div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
@@ -74,13 +167,21 @@ if "last_evidence" not in st.session_state:
     st.session_state.last_evidence = []
 
 with st.sidebar:
-    st.subheader("Estado")
-    st.write("Sessao:", st.session_state.session_id[:8])
+    st.subheader("Painel de trabalho")
+    st.caption("Acompanhe a sessão e mantenha a consulta organizada.")
+    st.write("Sessão:", st.session_state.session_id[:8])
     if st.button("Reiniciar conversa"):
         st.session_state.clear()
         st.rerun()
     with st.expander("Perfil coletado"):
         st.json(st.session_state.profile)
+    st.divider()
+    st.markdown("**Boas práticas**")
+    st.markdown(
+        "- Use perguntas específicas.\n"
+        "- Confira os trechos citados.\n"
+        "- Em patologias, use como apoio para raciocínio profissional."
+    )
 
 pro_tab, chat_tab, docs_tab, evidence_tab = st.tabs(
     ["Recomendações profissionais", "Triagem paciente", "Documentos", "Trechos da resposta"]
@@ -88,32 +189,65 @@ pro_tab, chat_tab, docs_tab, evidence_tab = st.tabs(
 
 with pro_tab:
     st.subheader("Recomendações para profissionais")
-    st.caption(
-        "Consulte boas fontes por tema para ganhar tempo em condutas, orientacoes e revisoes. "
-        "Esta area nao monta plano individual para paciente."
+    st.markdown(
+        '<div class="section-note">Escolha um tema recorrente do consultório ou da rotina acadêmica e peça uma síntese prática baseada nos documentos da base.</div>',
+        unsafe_allow_html=True,
     )
-    topic = st.selectbox(
-        "Tema",
-        [
-            "Patologias",
-            "Gestantes",
-            "Saude da mulher",
-            "Saude do idoso",
-            "Saude da crianca",
-            "TEA",
-            "Nutricao comportamental",
-            "Obesidade",
-            "Diabetes",
-            "Hipertensao",
-            "Doenca celiaca",
-        ],
-    )
-    professional_question = st.text_area(
-        "Pergunta do profissional",
-        placeholder="Ex.: quais pontos devo observar ao orientar um adulto com obesidade e cintura elevada?",
-        height=120,
-    )
-    if st.button("Gerar recomendação com fontes", type="primary"):
+    topic_options = [
+        "Patologias",
+        "Gestantes",
+        "Saúde da mulher",
+        "Saúde do idoso",
+        "Saúde da criança",
+        "TEA",
+        "Nutrição comportamental",
+        "Obesidade",
+        "Diabetes",
+        "Hipertensão",
+        "Doença celíaca",
+    ]
+    topic_examples = {
+        "Patologias": "Quais cuidados gerais devo revisar antes de orientar um paciente com patologia crônica?",
+        "Gestantes": "Quais pontos de atenção são importantes na orientação alimentar de gestantes?",
+        "Saúde da mulher": "Quais recomendações alimentares podem apoiar saúde da mulher em diferentes fases?",
+        "Saúde do idoso": "Quais sinais e cuidados nutricionais devo observar em idosos?",
+        "Saúde da criança": "Quais orientações práticas ajudam famílias na alimentação infantil?",
+        "TEA": "Quais pontos devo considerar em seletividade alimentar e rotina familiar no TEA?",
+        "Nutrição comportamental": "Como estruturar orientações sem reforçar culpa alimentar?",
+        "Obesidade": "Quais critérios e medidas ajudam a acompanhar obesidade no adulto?",
+        "Diabetes": "Quais pontos alimentares gerais devo revisar em diabetes tipo 2?",
+        "Hipertensão": "Quais orientações alimentares gerais são relevantes para hipertensão?",
+        "Doença celíaca": "Quais cuidados devo reforçar sobre glúten e contaminação cruzada?",
+    }
+
+    left, right = st.columns([0.36, 0.64], gap="large")
+    with left:
+        topic = st.radio("Tema de consulta", topic_options, label_visibility="visible")
+        st.markdown("**Atalhos úteis**")
+        st.markdown(
+            '<span class="source-chip">conduta</span>'
+            '<span class="source-chip">educação alimentar</span>'
+            '<span class="source-chip">risco</span>'
+            '<span class="source-chip">encaminhamento</span>',
+            unsafe_allow_html=True,
+        )
+    with right:
+        default_question = topic_examples.get(topic, "")
+        professional_question = st.text_area(
+            "Pergunta do profissional",
+            value=default_question,
+            placeholder="Descreva a dúvida, o público ou o contexto de atendimento.",
+            height=150,
+        )
+        st.caption("A resposta será acompanhada pelos trechos usados para fundamentação.")
+
+    col_action, col_hint = st.columns([0.28, 0.72])
+    with col_action:
+        generate_clicked = st.button("Gerar recomendação", type="primary", use_container_width=True)
+    with col_hint:
+        st.info("Ideal para revisar orientações, preparar consulta, estudar patologias ou montar materiais educativos.")
+
+    if generate_clicked:
         if not professional_question.strip():
             st.warning("Escreva uma pergunta para buscar nas fontes.")
         else:
@@ -129,11 +263,29 @@ with pro_tab:
 
 with docs_tab:
     st.subheader("Documentos usados pelo RAG")
-    st.caption("Estes documentos foram embedados no Supabase/pgvector e podem ser recuperados para fundamentar respostas.")
+    st.markdown(
+        '<div class="section-note">Base documental disponível para consulta semântica. Use esta aba para saber de onde a ferramenta pode tirar evidências.</div>',
+        unsafe_allow_html=True,
+    )
     try:
         sources = list_document_sources()
         if sources:
-            st.dataframe(sources, use_container_width=True, hide_index=True)
+            total_chunks = sum(int(row.get("chunks") or 0) for row in sources)
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Documentos", len(sources))
+            c2.metric("Trechos indexados", total_chunks)
+            c3.metric("Busca vetorial", "pgvector")
+            st.dataframe(
+                sources,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "title": "Documento",
+                    "source": "Arquivo fonte",
+                    "chunks": "Trechos",
+                    "first_ingested_at": "Ingestão",
+                },
+            )
         else:
             st.info("Nenhum documento encontrado no banco vetorial.")
     except Exception as exc:
@@ -141,6 +293,10 @@ with docs_tab:
 
 with evidence_tab:
     st.subheader("Trechos usados na ultima resposta")
+    st.markdown(
+        '<div class="section-note">Aqui ficam os fragmentos recuperados na última consulta. Eles servem para auditoria rápida da resposta.</div>',
+        unsafe_allow_html=True,
+    )
     if st.session_state.last_evidence:
         for item in st.session_state.last_evidence:
             similarity = item.get("similarity")
@@ -152,6 +308,11 @@ with evidence_tab:
         st.info("A ultima resposta foi uma pergunta de coleta ou ainda nao consultou documentos.")
 
 with chat_tab:
+    st.subheader("Triagem de paciente")
+    st.markdown(
+        '<div class="section-note">Área secundária para coletar dados essenciais em ping-pong. Use com cautela e sempre revise a saída profissionalmente.</div>',
+        unsafe_allow_html=True,
+    )
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
