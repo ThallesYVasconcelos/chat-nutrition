@@ -10,7 +10,18 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "src"))
 load_dotenv(ROOT / ".env")
 
-from nutri_ai.db import list_document_sources, search_documents  # noqa: E402
+from nutri_ai.db import (  # noqa: E402
+    authenticate_app_user,
+    create_app_user,
+    create_chat_thread,
+    get_chat_thread,
+    list_chat_messages,
+    list_chat_threads,
+    list_document_sources,
+    save_chat_message,
+    search_documents,
+    update_chat_thread_state,
+)
 from nutri_ai.graph import run_pingpong  # noqa: E402
 from nutri_ai.planner import generate_professional_recommendation  # noqa: E402
 
@@ -48,6 +59,100 @@ def _format_evidence_section(evidence: list[dict]) -> str:
             f"  Trecho: {item.get('excerpt') or 'sem trecho disponivel'}"
         )
     return "\n".join(lines)
+
+
+def _login_panel() -> None:
+    st.markdown(
+        """
+        <div class="main-hero">
+            <h1>Entrar no Nutri AI</h1>
+            <p>Acesse sua mesa de recomendações, mantenha histórico das consultas e revise conversas anteriores por conta.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    login_tab, signup_tab = st.tabs(["Entrar", "Criar conta"])
+    with login_tab:
+        with st.form("login_form"):
+            email = st.text_input("Email", key="login_email")
+            password = st.text_input("Senha", type="password", key="login_password")
+            submitted = st.form_submit_button("Entrar", type="primary", use_container_width=True)
+        if submitted:
+            user = authenticate_app_user(email, password)
+            if user:
+                st.session_state.user = user
+                _reset_workspace_state()
+                st.rerun()
+            st.error("Email ou senha inválidos.")
+
+    with signup_tab:
+        with st.form("signup_form"):
+            full_name = st.text_input("Nome profissional")
+            email = st.text_input("Email", key="signup_email")
+            password = st.text_input("Senha", type="password", key="signup_password")
+            confirm = st.text_input("Confirmar senha", type="password")
+            submitted = st.form_submit_button("Criar conta", type="primary", use_container_width=True)
+        if submitted:
+            if len(password) < 6:
+                st.warning("Use uma senha com pelo menos 6 caracteres.")
+            elif password != confirm:
+                st.warning("As senhas não conferem.")
+            else:
+                try:
+                    user = create_app_user(email, password, full_name)
+                    st.session_state.user = user
+                    _reset_workspace_state()
+                    st.rerun()
+                except ValueError as exc:
+                    st.error(str(exc))
+
+
+def _reset_workspace_state() -> None:
+    st.session_state.active_thread_id = None
+    st.session_state.session_id = str(uuid.uuid4())
+    st.session_state.profile = {}
+    st.session_state.messages = _initial_triage_messages()
+    st.session_state.last_evidence = []
+
+
+def _initial_triage_messages() -> list[dict]:
+    return [
+        {
+            "role": "assistant",
+            "content": (
+                "Vamos montar isso com cuidado. Vou perguntar uma coisa por vez "
+                "e so gerar um rascunho quando os dados essenciais estiverem completos. "
+                "Para comecar: qual e sua idade?"
+            ),
+        }
+    ]
+
+
+def _select_thread(user_id: str, thread_id: str) -> None:
+    thread = get_chat_thread(user_id, thread_id)
+    if not thread:
+        st.warning("Conversa nao encontrada para esta conta.")
+        return
+    st.session_state.active_thread_id = str(thread["id"])
+    st.session_state.session_id = str(thread["id"])
+    st.session_state.profile = thread.get("profile") or {}
+    st.session_state.last_evidence = thread.get("last_evidence") or []
+    rows = list_chat_messages(user_id, thread_id)
+    st.session_state.messages = [
+        {"role": row["role"], "content": row["content"]}
+        for row in rows
+        if row["role"] in {"user", "assistant"}
+    ] or _initial_triage_messages()
+
+
+def _ensure_thread(user_id: str, title: str, mode: str) -> str:
+    thread_id = st.session_state.get("active_thread_id")
+    if thread_id:
+        return thread_id
+    thread_id = create_chat_thread(user_id=user_id, title=title[:120], mode=mode, profile=st.session_state.profile)
+    st.session_state.active_thread_id = thread_id
+    st.session_state.session_id = thread_id
+    return thread_id
 
 
 st.set_page_config(page_title="Nutri AI", page_icon="N", layout="wide")
@@ -153,26 +258,46 @@ if "session_id" not in st.session_state:
 if "profile" not in st.session_state:
     st.session_state.profile = {}
 if "messages" not in st.session_state:
-    st.session_state.messages = [
-        {
-            "role": "assistant",
-            "content": (
-                "Vamos montar isso com cuidado. Vou perguntar uma coisa por vez "
-                "e so gerar um rascunho quando os dados essenciais estiverem completos. "
-                "Para comecar: qual e sua idade?"
-            ),
-        }
-    ]
+    st.session_state.messages = _initial_triage_messages()
 if "last_evidence" not in st.session_state:
     st.session_state.last_evidence = []
+if "active_thread_id" not in st.session_state:
+    st.session_state.active_thread_id = None
+if "user" not in st.session_state:
+    st.session_state.user = None
+
+if not st.session_state.user:
+    _login_panel()
+    st.stop()
+
+current_user = st.session_state.user
 
 with st.sidebar:
     st.subheader("Painel de trabalho")
     st.caption("Acompanhe a sessão e mantenha a consulta organizada.")
-    st.write("Sessão:", st.session_state.session_id[:8])
-    if st.button("Reiniciar conversa"):
-        st.session_state.clear()
+    st.success(current_user.get("full_name") or current_user.get("email"))
+    if st.button("Sair da conta"):
+        for key in ["user", "active_thread_id", "profile", "messages", "last_evidence", "session_id"]:
+            st.session_state.pop(key, None)
         st.rerun()
+    st.write("Sessão:", st.session_state.session_id[:8])
+    if st.button("Nova conversa"):
+        _reset_workspace_state()
+        st.rerun()
+    st.divider()
+    st.markdown("**Histórico da conta**")
+    try:
+        threads = list_chat_threads(str(current_user["id"]))
+        if threads:
+            for thread in threads:
+                label = f"{thread['title']} · {thread['mode']}"
+                if st.button(label, key=f"thread_{thread['id']}", use_container_width=True):
+                    _select_thread(str(current_user["id"]), str(thread["id"]))
+                    st.rerun()
+        else:
+            st.caption("Nenhuma conversa salva ainda.")
+    except Exception as exc:
+        st.warning(f"Não consegui carregar o histórico: {exc}")
     with st.expander("Perfil coletado"):
         st.json(st.session_state.profile)
     st.divider()
@@ -253,10 +378,37 @@ with pro_tab:
         else:
             with st.spinner("Buscando documentos e sintetizando recomendacao..."):
                 try:
+                    thread_id = _ensure_thread(
+                        str(current_user["id"]),
+                        f"{topic}: {professional_question[:70]}",
+                        "professional",
+                    )
+                    save_chat_message(
+                        str(current_user["id"]),
+                        thread_id,
+                        "user",
+                        f"[{topic}] {professional_question}",
+                        metadata={"topic": topic},
+                    )
                     docs = search_documents(f"{topic}. {professional_question}")
                     result = generate_professional_recommendation(topic, professional_question, docs)
                     st.session_state.last_evidence = result.get("evidence", [])
-                    st.markdown(result.get("content") or result.get("answer") or "Sem resposta gerada.")
+                    answer = result.get("content") or result.get("answer") or "Sem resposta gerada."
+                    save_chat_message(
+                        str(current_user["id"]),
+                        thread_id,
+                        "assistant",
+                        answer,
+                        evidence=st.session_state.last_evidence,
+                        metadata={"topic": topic, "kind": "professional_recommendation"},
+                    )
+                    update_chat_thread_state(
+                        str(current_user["id"]),
+                        thread_id,
+                        last_evidence=st.session_state.last_evidence,
+                        title=f"{topic}: {professional_question[:70]}",
+                    )
+                    st.markdown(answer)
                     st.markdown(_format_evidence_section(st.session_state.last_evidence))
                 except Exception as exc:
                     st.error(f"Nao consegui gerar a recomendacao: {exc}")
@@ -318,6 +470,8 @@ with chat_tab:
             st.markdown(message["content"])
 
     if prompt := st.chat_input("Responda a pergunta atual"):
+        thread_id = _ensure_thread(str(current_user["id"]), f"Triagem: {prompt[:70]}", "triage")
+        save_chat_message(str(current_user["id"]), thread_id, "user", prompt, metadata={"kind": "triage_input"})
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
@@ -348,6 +502,12 @@ with chat_tab:
                     + ", ".join(state["risk_flags"])
                     + ". A resposta final deve ser validada por profissional habilitado."
                 )
+            update_chat_thread_state(
+                str(current_user["id"]),
+                thread_id,
+                profile=st.session_state.profile,
+                last_evidence=st.session_state.last_evidence,
+            )
         except Exception as exc:
             st.session_state.last_evidence = []
             response = (
@@ -356,6 +516,14 @@ with chat_tab:
                 "\n\n**Fontes e trechos**\n\nNao houve consulta a documentos nesta resposta por erro de execucao."
             )
 
+        save_chat_message(
+            str(current_user["id"]),
+            thread_id,
+            "assistant",
+            response,
+            evidence=st.session_state.last_evidence,
+            metadata={"kind": "triage_response"},
+        )
         st.session_state.messages.append({"role": "assistant", "content": response})
         with st.chat_message("assistant"):
             st.markdown(response)

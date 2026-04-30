@@ -21,6 +21,7 @@ nutrition-chatbot/
   requirements.txt
   .env.example
   sql/001_supabase_pgvector.sql
+  sql/003_auth_and_chat_history.sql
   scripts/ingest_documents.py
   src/nutri_ai/
     config.py
@@ -72,6 +73,16 @@ O app escolhe a conexao nesta ordem:
 Para rodar no Streamlit, copie `.streamlit/secrets.example.toml` para `.streamlit/secrets.toml` no ambiente local ou configure os mesmos nomes no painel de secrets do Streamlit Cloud.
 
 O app le primeiro `st.secrets` e usa `.env` como fallback para scripts locais, como ingestao e migracoes.
+
+## Autenticacao e historico
+
+O app possui cadastro/login simples para nutricionistas com persistencia no Supabase:
+
+- `app_users`: contas dos profissionais.
+- `chat_threads`: conversas por usuario.
+- `chat_messages`: mensagens, respostas e evidencias usadas.
+
+Rode `sql/003_auth_and_chat_history.sql` para habilitar essa camada em um banco existente.
 
 ## LLM e embeddings
 
