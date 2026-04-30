@@ -74,6 +74,14 @@ Para rodar no Streamlit, copie `.streamlit/secrets.example.toml` para `.streamli
 
 O app le primeiro `st.secrets` e usa `.env` como fallback para scripts locais, como ingestao e migracoes.
 
+Para login com Google via Supabase Auth, configure tambem:
+
+- `APP_BASE_URL`: URL publica do app no Streamlit, por exemplo `https://nutrifeliz.streamlit.app`.
+- `SUPABASE_URL`: URL do projeto Supabase, por exemplo `https://xxxx.supabase.co`.
+- `SUPABASE_ANON_KEY`: chave publishable/anon do projeto.
+
+No Supabase, habilite Authentication > Providers > Google. No Google Cloud, o redirect autorizado do cliente OAuth deve apontar para `https://<project-ref>.supabase.co/auth/v1/callback`; no Supabase, adicione a URL do Streamlit na lista de redirects permitidos.
+
 ## Autenticacao e historico
 
 O app possui cadastro/login simples para nutricionistas com persistencia no Supabase:
@@ -87,6 +95,7 @@ O app possui cadastro/login simples para nutricionistas com persistencia no Supa
 
 Rode `sql/003_auth_and_chat_history.sql` para habilitar essa camada em um banco existente.
 Rode `sql/004_patients_documents_observations.sql` para habilitar pacientes, observacoes e documentos.
+Rode `sql/005_supabase_google_auth.sql` para permitir contas criadas/vinculadas por Google OAuth.
 
 ## LLM e embeddings
 

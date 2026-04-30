@@ -134,6 +134,70 @@ def authenticate_app_user(email: str, password: str) -> dict[str, Any] | None:
     return dict(row) if row else None
 
 
+def upsert_oauth_app_user(
+    email: str,
+    full_name: str | None,
+    oauth_provider: str,
+    oauth_subject: str,
+) -> dict[str, Any]:
+    normalized_email = email.strip().lower()
+    if not normalized_email:
+        raise ValueError("O provedor OAuth nao retornou email.")
+    if not oauth_subject:
+        raise ValueError("O provedor OAuth nao retornou identificador do usuario.")
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                update public.app_users
+                set email = %s,
+                    full_name = coalesce(nullif(%s, ''), full_name),
+                    oauth_provider = %s,
+                    oauth_subject = %s,
+                    last_login_at = now()
+                where oauth_provider = %s and oauth_subject = %s
+                returning id, email, full_name, created_at
+                """,
+                (
+                    normalized_email,
+                    full_name,
+                    oauth_provider,
+                    oauth_subject,
+                    oauth_provider,
+                    oauth_subject,
+                ),
+            )
+            row = cur.fetchone()
+            if not row:
+                cur.execute(
+                    """
+                    update public.app_users
+                    set full_name = coalesce(nullif(%s, ''), full_name),
+                        oauth_provider = %s,
+                        oauth_subject = %s,
+                        last_login_at = now()
+                    where lower(email) = %s
+                    returning id, email, full_name, created_at
+                    """,
+                    (full_name, oauth_provider, oauth_subject, normalized_email),
+                )
+                row = cur.fetchone()
+            if not row:
+                cur.execute(
+                    """
+                    insert into public.app_users
+                      (email, full_name, password_hash, oauth_provider, oauth_subject, last_login_at)
+                    values (%s, nullif(%s, ''), null, %s, %s, now())
+                    returning id, email, full_name, created_at
+                    """,
+                    (normalized_email, full_name, oauth_provider, oauth_subject),
+                )
+                row = cur.fetchone()
+        conn.commit()
+    return dict(row)
+
+
 def create_chat_thread(
     user_id: str,
     title: str,

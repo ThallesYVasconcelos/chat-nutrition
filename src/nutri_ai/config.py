@@ -9,9 +9,12 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     app_env: Literal["local", "production"] = "local"
+    app_base_url: str | None = None
     database_url: str | None = None
     supabase_db_url_local: str | None = None
     supabase_db_url_production: str | None = None
+    supabase_url: str | None = None
+    supabase_anon_key: str | None = None
 
     embedding_provider: Literal["local"] = "local"
     local_embedding_model: str = "intfloat/multilingual-e5-small"
@@ -58,9 +61,12 @@ def _load_streamlit_secrets() -> dict[str, Any]:
 
     key_map = {
         "APP_ENV": "app_env",
+        "APP_BASE_URL": "app_base_url",
         "DATABASE_URL": "database_url",
         "SUPABASE_DB_URL_LOCAL": "supabase_db_url_local",
         "SUPABASE_DB_URL_PRODUCTION": "supabase_db_url_production",
+        "SUPABASE_URL": "supabase_url",
+        "SUPABASE_ANON_KEY": "supabase_anon_key",
         "EMBEDDING_PROVIDER": "embedding_provider",
         "LOCAL_EMBEDDING_MODEL": "local_embedding_model",
         "EMBEDDING_DIMENSIONS": "embedding_dimensions",

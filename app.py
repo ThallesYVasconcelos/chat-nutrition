@@ -30,9 +30,18 @@ from nutri_ai.db import (  # noqa: E402
     update_patient,
     update_patient_document_status,
     update_chat_thread_state,
+    upsert_oauth_app_user,
 )
 from nutri_ai.graph import run_pingpong  # noqa: E402
 from nutri_ai.planner import generate_professional_recommendation  # noqa: E402
+from nutri_ai.config import get_settings  # noqa: E402
+from nutri_ai.supabase_auth import (  # noqa: E402
+    build_google_oauth_url,
+    create_pkce_verifier,
+    exchange_code_for_session,
+    extract_user_identity,
+    is_google_auth_configured,
+)
 
 
 def _extract_evidence(state: dict) -> list[dict]:
@@ -79,7 +88,52 @@ def _format_date(value: object) -> str:
     return "" if value is None else str(value)
 
 
+def _oauth_redirect_url() -> str:
+    settings = get_settings()
+    return (settings.app_base_url or "http://localhost:8501").rstrip("/")
+
+
+def _handle_google_callback() -> None:
+    params = st.query_params
+    error = params.get("error_description") or params.get("error")
+    if error:
+        st.error(f"Login com Google cancelado ou recusado: {error}")
+        st.query_params.clear()
+        return
+
+    code = params.get("code")
+    if not code or st.session_state.get("user"):
+        return
+
+    verifier = st.session_state.get("google_oauth_code_verifier")
+    if not verifier:
+        st.warning("Sessao de login expirada. Clique novamente em Entrar com Google.")
+        st.query_params.clear()
+        return
+
+    try:
+        settings = get_settings()
+        session_data = exchange_code_for_session(settings, code, verifier)
+        email, full_name, subject = extract_user_identity(session_data)
+        user = upsert_oauth_app_user(email, full_name, "google", subject)
+        st.session_state.user = user
+        st.session_state.supabase_session = {
+            "access_token": session_data.get("access_token"),
+            "refresh_token": session_data.get("refresh_token"),
+            "expires_at": session_data.get("expires_at"),
+        }
+        st.session_state.pop("google_oauth_code_verifier", None)
+        st.query_params.clear()
+        _reset_workspace_state()
+        st.rerun()
+    except Exception as exc:
+        st.session_state.pop("google_oauth_code_verifier", None)
+        st.query_params.clear()
+        st.error(f"Nao consegui concluir o login com Google: {exc}")
+
+
 def _login_panel() -> None:
+    settings = get_settings()
     st.markdown(
         """
         <div class="main-hero">
@@ -91,6 +145,16 @@ def _login_panel() -> None:
     )
     login_tab, signup_tab = st.tabs(["Entrar", "Criar conta"])
     with login_tab:
+        if is_google_auth_configured(settings):
+            verifier = create_pkce_verifier()
+            st.session_state.google_oauth_code_verifier = verifier
+            auth_url = build_google_oauth_url(settings, _oauth_redirect_url(), verifier)
+            st.link_button("Entrar com Google", auth_url, type="primary", use_container_width=True)
+            st.caption("No primeiro acesso, a conta interna e criada automaticamente a partir do Google.")
+            st.divider()
+        else:
+            st.info("Para liberar Google, configure SUPABASE_URL e SUPABASE_ANON_KEY nos secrets.")
+
         with st.form("login_form"):
             email = st.text_input("Email", key="login_email")
             password = st.text_input("Senha", type="password", key="login_password")
@@ -287,6 +351,8 @@ if "active_thread_id" not in st.session_state:
 if "user" not in st.session_state:
     st.session_state.user = None
 
+_handle_google_callback()
+
 if not st.session_state.user:
     _login_panel()
     st.stop()
@@ -313,6 +379,8 @@ with st.sidebar:
             "last_generated_answer",
             "session_id",
             "selected_patient_id",
+            "supabase_session",
+            "google_oauth_code_verifier",
         ]:
             st.session_state.pop(key, None)
         st.rerun()
