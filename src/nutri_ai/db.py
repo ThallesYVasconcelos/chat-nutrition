@@ -256,6 +256,173 @@ def update_chat_thread_state(
         conn.commit()
 
 
+def create_patient(
+    user_id: str,
+    full_name: str,
+    birth_date: str | None = None,
+    phone: str | None = None,
+    email: str | None = None,
+    objective: str | None = None,
+    notes: str | None = None,
+) -> str:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                insert into public.patients
+                  (user_id, full_name, birth_date, phone, email, objective, notes)
+                values (%s, %s, nullif(%s, '')::date, %s, %s, %s, %s)
+                returning id
+                """,
+                (user_id, full_name.strip(), birth_date or "", phone, email, objective, notes),
+            )
+            row = cur.fetchone()
+        conn.commit()
+    return str(row["id"])
+
+
+def list_patients(user_id: str) -> list[dict[str, Any]]:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select id, full_name, birth_date, phone, email, objective, notes, created_at, updated_at
+                from public.patients
+                where user_id = %s
+                order by full_name
+                """,
+                (user_id,),
+            )
+            return list(cur.fetchall())
+
+
+def get_patient(user_id: str, patient_id: str) -> dict[str, Any] | None:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select id, full_name, birth_date, phone, email, objective, notes, created_at, updated_at
+                from public.patients
+                where user_id = %s and id = %s
+                """,
+                (user_id, patient_id),
+            )
+            row = cur.fetchone()
+    return dict(row) if row else None
+
+
+def update_patient(
+    user_id: str,
+    patient_id: str,
+    full_name: str,
+    birth_date: str | None = None,
+    phone: str | None = None,
+    email: str | None = None,
+    objective: str | None = None,
+    notes: str | None = None,
+) -> None:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                update public.patients
+                set full_name = %s,
+                    birth_date = nullif(%s, '')::date,
+                    phone = %s,
+                    email = %s,
+                    objective = %s,
+                    notes = %s
+                where user_id = %s and id = %s
+                """,
+                (full_name.strip(), birth_date or "", phone, email, objective, notes, user_id, patient_id),
+            )
+        conn.commit()
+
+
+def create_patient_observation(user_id: str, patient_id: str, category: str, note: str) -> str:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                insert into public.patient_observations (patient_id, user_id, category, note)
+                values (%s, %s, %s, %s)
+                returning id
+                """,
+                (patient_id, user_id, category or "geral", note.strip()),
+            )
+            row = cur.fetchone()
+        conn.commit()
+    return str(row["id"])
+
+
+def list_patient_observations(user_id: str, patient_id: str) -> list[dict[str, Any]]:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select id, category, note, created_at
+                from public.patient_observations
+                where user_id = %s and patient_id = %s
+                order by created_at desc
+                """,
+                (user_id, patient_id),
+            )
+            return list(cur.fetchall())
+
+
+def create_patient_document(
+    user_id: str,
+    patient_id: str,
+    title: str,
+    document_type: str,
+    content: str,
+    thread_id: str | None = None,
+) -> str:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                insert into public.patient_documents
+                  (patient_id, user_id, thread_id, title, document_type, content)
+                values (%s, %s, %s, %s, %s, %s)
+                returning id
+                """,
+                (patient_id, user_id, thread_id, title.strip(), document_type or "orientacao", content.strip()),
+            )
+            row = cur.fetchone()
+        conn.commit()
+    return str(row["id"])
+
+
+def list_patient_documents(user_id: str, patient_id: str) -> list[dict[str, Any]]:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select id, title, document_type, content, status, created_at, updated_at
+                from public.patient_documents
+                where user_id = %s and patient_id = %s
+                order by created_at desc
+                """,
+                (user_id, patient_id),
+            )
+            return list(cur.fetchall())
+
+
+def update_patient_document_status(user_id: str, document_id: str, status: str) -> None:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                update public.patient_documents
+                set status = %s
+                where user_id = %s and id = %s
+                """,
+                (status, user_id, document_id),
+            )
+        conn.commit()
+
+
 def save_client_profile(session_id: str, profile: dict[str, Any], risk_flags: list[str]) -> str:
     with get_connection() as conn:
         with conn.cursor() as cur:

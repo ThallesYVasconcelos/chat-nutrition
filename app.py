@@ -14,12 +14,21 @@ from nutri_ai.db import (  # noqa: E402
     authenticate_app_user,
     create_app_user,
     create_chat_thread,
+    create_patient,
+    create_patient_document,
+    create_patient_observation,
     get_chat_thread,
+    get_patient,
     list_chat_messages,
     list_chat_threads,
     list_document_sources,
+    list_patient_documents,
+    list_patient_observations,
+    list_patients,
     save_chat_message,
     search_documents,
+    update_patient,
+    update_patient_document_status,
     update_chat_thread_state,
 )
 from nutri_ai.graph import run_pingpong  # noqa: E402
@@ -59,6 +68,15 @@ def _format_evidence_section(evidence: list[dict]) -> str:
             f"  Trecho: {item.get('excerpt') or 'sem trecho disponivel'}"
         )
     return "\n".join(lines)
+
+
+def _text_or_none(value: str | None) -> str | None:
+    value = (value or "").strip()
+    return value or None
+
+
+def _format_date(value: object) -> str:
+    return "" if value is None else str(value)
 
 
 def _login_panel() -> None:
@@ -113,6 +131,7 @@ def _reset_workspace_state() -> None:
     st.session_state.profile = {}
     st.session_state.messages = _initial_triage_messages()
     st.session_state.last_evidence = []
+    st.session_state.last_generated_answer = ""
 
 
 def _initial_triage_messages() -> list[dict]:
@@ -261,6 +280,8 @@ if "messages" not in st.session_state:
     st.session_state.messages = _initial_triage_messages()
 if "last_evidence" not in st.session_state:
     st.session_state.last_evidence = []
+if "last_generated_answer" not in st.session_state:
+    st.session_state.last_generated_answer = ""
 if "active_thread_id" not in st.session_state:
     st.session_state.active_thread_id = None
 if "user" not in st.session_state:
@@ -278,11 +299,21 @@ with st.sidebar:
     st.success(current_user.get("full_name") or current_user.get("email"))
     page = st.radio(
         "Navegação",
-        ["Recomendações", "Triagem", "Documentos", "Trechos"],
+        ["Recomendações", "Pacientes", "Triagem", "Documentos", "Trechos"],
+        index=0,
         label_visibility="visible",
     )
     if st.button("Sair da conta"):
-        for key in ["user", "active_thread_id", "profile", "messages", "last_evidence", "session_id"]:
+        for key in [
+            "user",
+            "active_thread_id",
+            "profile",
+            "messages",
+            "last_evidence",
+            "last_generated_answer",
+            "session_id",
+            "selected_patient_id",
+        ]:
             st.session_state.pop(key, None)
         st.rerun()
     st.write("Sessão:", st.session_state.session_id[:8])
@@ -409,10 +440,195 @@ if page == "Recomendações":
                         last_evidence=st.session_state.last_evidence,
                         title=f"{topic}: {professional_question[:70]}",
                     )
+                    st.session_state.last_generated_answer = answer
                     st.markdown(answer)
                     st.markdown(_format_evidence_section(st.session_state.last_evidence))
                 except Exception as exc:
                     st.error(f"Nao consegui gerar a recomendacao: {exc}")
+
+if page == "Pacientes":
+    st.subheader("Cadastro de pacientes")
+    st.markdown(
+        '<div class="section-note">Organize pacientes por conta, registre observacoes de acompanhamento e guarde documentos gerados para revisao posterior.</div>',
+        unsafe_allow_html=True,
+    )
+
+    user_id = str(current_user["id"])
+    try:
+        patients = list_patients(user_id)
+    except Exception as exc:
+        st.error(f"Nao consegui carregar os pacientes: {exc}")
+        patients = []
+
+    left, right = st.columns([0.34, 0.66], gap="large")
+    with left:
+        st.markdown("**Novo paciente**")
+        with st.form("patient_create_form", clear_on_submit=True):
+            full_name = st.text_input("Nome completo")
+            birth_date = st.text_input("Nascimento", placeholder="AAAA-MM-DD")
+            phone = st.text_input("Telefone")
+            email = st.text_input("Email")
+            objective = st.text_input("Objetivo principal")
+            notes = st.text_area("Resumo inicial", height=110)
+            submitted = st.form_submit_button("Cadastrar paciente", type="primary", use_container_width=True)
+        if submitted:
+            if not full_name.strip():
+                st.warning("Informe o nome do paciente.")
+            else:
+                try:
+                    patient_id = create_patient(
+                        user_id=user_id,
+                        full_name=full_name,
+                        birth_date=_text_or_none(birth_date),
+                        phone=_text_or_none(phone),
+                        email=_text_or_none(email),
+                        objective=_text_or_none(objective),
+                        notes=_text_or_none(notes),
+                    )
+                    st.session_state.selected_patient_id = patient_id
+                    st.success("Paciente cadastrado.")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Nao consegui cadastrar o paciente: {exc}")
+
+        st.divider()
+        st.markdown("**Pacientes cadastrados**")
+        if patients:
+            patient_options = {f"{row['full_name']}": str(row["id"]) for row in patients}
+            current_id = st.session_state.get("selected_patient_id")
+            option_labels = list(patient_options.keys())
+            selected_index = 0
+            if current_id in patient_options.values():
+                selected_index = list(patient_options.values()).index(current_id)
+            selected_label = st.selectbox("Selecionar paciente", option_labels, index=selected_index)
+            st.session_state.selected_patient_id = patient_options[selected_label]
+        else:
+            st.info("Nenhum paciente cadastrado ainda.")
+
+    with right:
+        patient_id = st.session_state.get("selected_patient_id")
+        patient = get_patient(user_id, patient_id) if patient_id else None
+        if not patient:
+            st.info("Cadastre ou selecione um paciente para abrir o prontuario.")
+        else:
+            st.markdown(f"**{patient['full_name']}**")
+            st.caption(patient.get("objective") or "Sem objetivo principal registrado.")
+
+            with st.expander("Dados do paciente", expanded=True):
+                with st.form(f"patient_edit_{patient['id']}"):
+                    edit_name = st.text_input("Nome completo", value=patient.get("full_name") or "")
+                    edit_birth_date = st.text_input("Nascimento", value=_format_date(patient.get("birth_date")))
+                    edit_phone = st.text_input("Telefone", value=patient.get("phone") or "")
+                    edit_email = st.text_input("Email", value=patient.get("email") or "")
+                    edit_objective = st.text_input("Objetivo principal", value=patient.get("objective") or "")
+                    edit_notes = st.text_area("Resumo do caso", value=patient.get("notes") or "", height=120)
+                    updated = st.form_submit_button("Salvar dados", use_container_width=True)
+                if updated:
+                    if not edit_name.strip():
+                        st.warning("O nome do paciente nao pode ficar vazio.")
+                    else:
+                        try:
+                            update_patient(
+                                user_id=user_id,
+                                patient_id=str(patient["id"]),
+                                full_name=edit_name,
+                                birth_date=_text_or_none(edit_birth_date),
+                                phone=_text_or_none(edit_phone),
+                                email=_text_or_none(edit_email),
+                                objective=_text_or_none(edit_objective),
+                                notes=_text_or_none(edit_notes),
+                            )
+                            st.success("Dados atualizados.")
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"Nao consegui atualizar o paciente: {exc}")
+
+            patient_area = st.radio(
+                "Area do paciente",
+                ["Observacoes", "Documentos"],
+                horizontal=True,
+                label_visibility="collapsed",
+            )
+
+            if patient_area == "Observacoes":
+                with st.form(f"observation_form_{patient['id']}", clear_on_submit=True):
+                    category = st.selectbox(
+                        "Tipo",
+                        ["consulta", "evolucao", "exame", "conduta", "administrativo", "geral"],
+                    )
+                    note = st.text_area("Observacao", height=130)
+                    saved_note = st.form_submit_button("Adicionar observacao", type="primary")
+                if saved_note:
+                    if not note.strip():
+                        st.warning("Escreva a observacao antes de salvar.")
+                    else:
+                        try:
+                            create_patient_observation(user_id, str(patient["id"]), category, note)
+                            st.success("Observacao registrada.")
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"Nao consegui salvar a observacao: {exc}")
+
+                try:
+                    observations = list_patient_observations(user_id, str(patient["id"]))
+                    if observations:
+                        for item in observations:
+                            with st.expander(f"{item['category']} - {item['created_at']}"):
+                                st.write(item["note"])
+                    else:
+                        st.info("Nenhuma observacao registrada para este paciente.")
+                except Exception as exc:
+                    st.warning(f"Nao consegui listar observacoes: {exc}")
+
+            if patient_area == "Documentos":
+                with st.form(f"patient_document_form_{patient['id']}", clear_on_submit=True):
+                    doc_title = st.text_input("Titulo do documento")
+                    doc_type = st.selectbox(
+                        "Tipo",
+                        ["orientacao", "plano", "evolucao", "relatorio", "outro"],
+                    )
+                    doc_content = st.text_area(
+                        "Conteudo",
+                        value=st.session_state.get("last_generated_answer", ""),
+                        height=220,
+                        help="Quando houver uma resposta gerada na aba de recomendacoes ou triagem, ela aparece aqui para salvar no paciente.",
+                    )
+                    saved_doc = st.form_submit_button("Salvar documento", type="primary")
+                if saved_doc:
+                    if not doc_title.strip() or not doc_content.strip():
+                        st.warning("Informe titulo e conteudo do documento.")
+                    else:
+                        try:
+                            create_patient_document(
+                                user_id=user_id,
+                                patient_id=str(patient["id"]),
+                                title=doc_title,
+                                document_type=doc_type,
+                                content=doc_content,
+                                thread_id=st.session_state.get("active_thread_id"),
+                            )
+                            st.success("Documento salvo no paciente.")
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"Nao consegui salvar o documento: {exc}")
+
+                try:
+                    documents = list_patient_documents(user_id, str(patient["id"]))
+                    if documents:
+                        for doc in documents:
+                            status = doc.get("status") or "ativo"
+                            with st.expander(f"{doc['title']} - {doc['document_type']} - {status}"):
+                                st.caption(f"Criado em {doc['created_at']}")
+                                st.write(doc["content"])
+                                next_status = "arquivado" if status == "ativo" else "ativo"
+                                button_label = "Arquivar" if status == "ativo" else "Restaurar"
+                                if st.button(button_label, key=f"doc_status_{doc['id']}"):
+                                    update_patient_document_status(user_id, str(doc["id"]), next_status)
+                                    st.rerun()
+                    else:
+                        st.info("Nenhum documento salvo para este paciente.")
+                except Exception as exc:
+                    st.warning(f"Nao consegui listar documentos do paciente: {exc}")
 
 if page == "Documentos":
     st.subheader("Documentos usados pelo RAG")
@@ -514,6 +730,7 @@ if page == "Triagem":
             evidence=st.session_state.last_evidence,
             metadata={"kind": "triage_response"},
         )
+        st.session_state.last_generated_answer = response
         st.session_state.messages.append({"role": "assistant", "content": response})
         with st.chat_message("assistant"):
             st.markdown(response)

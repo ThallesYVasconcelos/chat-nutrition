@@ -81,8 +81,12 @@ O app possui cadastro/login simples para nutricionistas com persistencia no Supa
 - `app_users`: contas dos profissionais.
 - `chat_threads`: conversas por usuario.
 - `chat_messages`: mensagens, respostas e evidencias usadas.
+- `patients`: cadastro de pacientes por profissional.
+- `patient_observations`: observacoes vinculadas ao paciente.
+- `patient_documents`: documentos gerados e arquivaveis por paciente.
 
 Rode `sql/003_auth_and_chat_history.sql` para habilitar essa camada em um banco existente.
+Rode `sql/004_patients_documents_observations.sql` para habilitar pacientes, observacoes e documentos.
 
 ## LLM e embeddings
 
