@@ -160,48 +160,48 @@ st.set_page_config(page_title="Nutri AI", page_icon="N", layout="wide")
 st.markdown(
     """
     <style>
+    html, body, [data-testid="stAppViewContainer"] {
+        background: #f6f7fb;
+    }
     .block-container {
-        padding-top: 2rem;
+        padding-top: 1.4rem;
         padding-bottom: 3rem;
-        max-width: 1180px;
+        max-width: 1120px;
     }
     .main-hero {
-        border: 1px solid #d8e2dc;
+        border: 1px solid #e4e7ec;
         border-radius: 8px;
-        padding: 1.35rem 1.5rem;
-        background: linear-gradient(135deg, #f8fbf7 0%, #eef7f0 100%);
-        margin-bottom: 1rem;
+        padding: 1rem 1.15rem;
+        background: #ffffff;
+        margin-bottom: .85rem;
+        box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
     }
     .main-hero h1 {
-        font-size: 2rem;
-        margin: 0 0 .35rem 0;
+        font-size: 1.55rem;
+        margin: 0 0 .2rem 0;
         letter-spacing: 0;
+        color: #101828;
     }
     .main-hero p {
-        color: #41544a;
-        font-size: 1rem;
+        color: #667085;
+        font-size: .95rem;
         margin: 0;
-        max-width: 820px;
-    }
-    .metric-strip {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: .75rem;
-        margin: 1rem 0 1.25rem;
+        max-width: 900px;
     }
     .work-card {
-        border: 1px solid #dce5df;
+        border: 1px solid #e4e7ec;
         border-radius: 8px;
-        padding: .85rem 1rem;
+        padding: .8rem .9rem;
         background: #ffffff;
+        box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
     }
     .work-card strong {
         display: block;
-        color: #1f3329;
+        color: #101828;
         margin-bottom: .15rem;
     }
     .work-card span {
-        color: #53645a;
+        color: #667085;
         font-size: .92rem;
     }
     .source-chip {
@@ -215,39 +215,39 @@ st.markdown(
         margin: .1rem .2rem .1rem 0;
     }
     .section-note {
-        color: #53645a;
+        color: #667085;
         font-size: .95rem;
         margin-bottom: 1rem;
     }
-    div[data-testid="stTabs"] button p {
-        font-size: .95rem;
-        font-weight: 600;
+    [data-testid="stSidebar"] {
+        background: #ffffff;
+        border-right: 1px solid #e4e7ec;
+    }
+    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {
+        color: #475467;
+    }
+    h2, h3 {
+        color: #101828;
+        letter-spacing: 0;
     }
     div[data-testid="stExpander"] {
         border-radius: 8px;
-        border-color: #dce5df;
+        border-color: #e4e7ec;
+        background: #ffffff;
     }
     .stButton > button {
         border-radius: 8px;
         font-weight: 600;
     }
-    @media (max-width: 780px) {
-        .metric-strip {
-            grid-template-columns: 1fr;
-        }
-        .main-hero h1 {
-            font-size: 1.55rem;
-        }
+    div[data-testid="stDataFrame"] {
+        border: 1px solid #e4e7ec;
+        border-radius: 8px;
+        overflow: hidden;
     }
     </style>
     <div class="main-hero">
         <h1>Nutri AI</h1>
-        <p>Uma mesa de apoio para nutricionistas: consulte recomendações por tema, veja fontes oficiais e leve trechos rastreáveis para sua conduta, aula, orientação ou estudo de caso.</p>
-    </div>
-    <div class="metric-strip">
-        <div class="work-card"><strong>Consulta por tema</strong><span>Patologias, gestantes, infância, idoso, TEA e comportamento alimentar.</span></div>
-        <div class="work-card"><strong>Fontes à vista</strong><span>Cada resposta vem com documentos e trechos recuperados.</span></div>
-        <div class="work-card"><strong>Uso profissional</strong><span>Foco em síntese e orientação, não em substituir julgamento clínico.</span></div>
+        <p>Ambiente de consulta para nutricionistas: recomendações por tema, histórico por conta e respostas com trechos rastreáveis das fontes.</p>
     </div>
     """,
     unsafe_allow_html=True,
@@ -276,6 +276,11 @@ with st.sidebar:
     st.subheader("Painel de trabalho")
     st.caption("Acompanhe a sessão e mantenha a consulta organizada.")
     st.success(current_user.get("full_name") or current_user.get("email"))
+    page = st.radio(
+        "Navegação",
+        ["Recomendações", "Triagem", "Documentos", "Trechos"],
+        label_visibility="visible",
+    )
     if st.button("Sair da conta"):
         for key in ["user", "active_thread_id", "profile", "messages", "last_evidence", "session_id"]:
             st.session_state.pop(key, None)
@@ -308,11 +313,7 @@ with st.sidebar:
         "- Em patologias, use como apoio para raciocínio profissional."
     )
 
-pro_tab, chat_tab, docs_tab, evidence_tab = st.tabs(
-    ["Recomendações profissionais", "Triagem paciente", "Documentos", "Trechos da resposta"]
-)
-
-with pro_tab:
+if page == "Recomendações":
     st.subheader("Recomendações para profissionais")
     st.markdown(
         '<div class="section-note">Escolha um tema recorrente do consultório ou da rotina acadêmica e peça uma síntese prática baseada nos documentos da base.</div>',
@@ -413,7 +414,7 @@ with pro_tab:
                 except Exception as exc:
                     st.error(f"Nao consegui gerar a recomendacao: {exc}")
 
-with docs_tab:
+if page == "Documentos":
     st.subheader("Documentos usados pelo RAG")
     st.markdown(
         '<div class="section-note">Base documental disponível para consulta semântica. Use esta aba para saber de onde a ferramenta pode tirar evidências.</div>',
@@ -432,7 +433,7 @@ with docs_tab:
     except Exception as exc:
         st.warning(f"Nao consegui listar documentos agora: {exc}")
 
-with evidence_tab:
+if page == "Trechos":
     st.subheader("Trechos usados na ultima resposta")
     st.markdown(
         '<div class="section-note">Aqui ficam os fragmentos recuperados na última consulta. Eles servem para auditoria rápida da resposta.</div>',
@@ -448,7 +449,7 @@ with evidence_tab:
     else:
         st.info("A ultima resposta foi uma pergunta de coleta ou ainda nao consultou documentos.")
 
-with chat_tab:
+if page == "Triagem":
     st.subheader("Triagem de paciente")
     st.markdown(
         '<div class="section-note">Área secundária para coletar dados essenciais em ping-pong. Use com cautela e sempre revise a saída profissionalmente.</div>',
