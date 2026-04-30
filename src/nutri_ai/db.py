@@ -203,16 +203,17 @@ def create_chat_thread(
     title: str,
     mode: str = "professional",
     profile: dict[str, Any] | None = None,
+    patient_id: str | None = None,
 ) -> str:
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                insert into public.chat_threads (user_id, title, mode, profile)
-                values (%s, %s, %s, %s)
+                insert into public.chat_threads (user_id, title, mode, profile, patient_id)
+                values (%s, %s, %s, %s, %s)
                 returning id
                 """,
-                (user_id, title, mode, Jsonb(profile or {})),
+                (user_id, title, mode, Jsonb(profile or {}), patient_id),
             )
             row = cur.fetchone()
         conn.commit()
@@ -224,13 +225,29 @@ def list_chat_threads(user_id: str, limit: int = 30) -> list[dict[str, Any]]:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                select id, title, mode, profile, last_evidence, created_at, updated_at
+                select id, title, mode, profile, last_evidence, patient_id, created_at, updated_at
                 from public.chat_threads
-                where user_id = %s
+                where user_id = %s and patient_id is null
                 order by updated_at desc
                 limit %s
                 """,
                 (user_id, limit),
+            )
+            return list(cur.fetchall())
+
+
+def list_patient_chat_threads(user_id: str, patient_id: str, limit: int = 30) -> list[dict[str, Any]]:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select id, title, mode, profile, last_evidence, patient_id, created_at, updated_at
+                from public.chat_threads
+                where user_id = %s and patient_id = %s
+                order by updated_at desc
+                limit %s
+                """,
+                (user_id, patient_id, limit),
             )
             return list(cur.fetchall())
 
@@ -240,7 +257,7 @@ def get_chat_thread(user_id: str, thread_id: str) -> dict[str, Any] | None:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                select id, title, mode, profile, last_evidence, created_at, updated_at
+                select id, title, mode, profile, last_evidence, patient_id, created_at, updated_at
                 from public.chat_threads
                 where user_id = %s and id = %s
                 """,

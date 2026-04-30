@@ -22,6 +22,7 @@ from nutri_ai.db import (  # noqa: E402
     list_chat_messages,
     list_chat_threads,
     list_document_sources,
+    list_patient_chat_threads,
     list_patient_documents,
     list_patient_observations,
     list_patients,
@@ -196,6 +197,7 @@ def _reset_workspace_state() -> None:
     st.session_state.messages = _initial_triage_messages()
     st.session_state.last_evidence = []
     st.session_state.last_generated_answer = ""
+    st.session_state.active_thread_patient_id = None
 
 
 def _initial_triage_messages() -> list[dict]:
@@ -218,6 +220,7 @@ def _select_thread(user_id: str, thread_id: str) -> None:
         return
     st.session_state.active_thread_id = str(thread["id"])
     st.session_state.session_id = str(thread["id"])
+    st.session_state.active_thread_patient_id = str(thread["patient_id"]) if thread.get("patient_id") else None
     st.session_state.profile = thread.get("profile") or {}
     st.session_state.last_evidence = thread.get("last_evidence") or []
     rows = list_chat_messages(user_id, thread_id)
@@ -228,12 +231,20 @@ def _select_thread(user_id: str, thread_id: str) -> None:
     ] or _initial_triage_messages()
 
 
-def _ensure_thread(user_id: str, title: str, mode: str) -> str:
+def _ensure_thread(user_id: str, title: str, mode: str, patient_id: str | None = None) -> str:
     thread_id = st.session_state.get("active_thread_id")
-    if thread_id:
+    active_patient_id = st.session_state.get("active_thread_patient_id")
+    if thread_id and active_patient_id == patient_id:
         return thread_id
-    thread_id = create_chat_thread(user_id=user_id, title=title[:120], mode=mode, profile=st.session_state.profile)
+    thread_id = create_chat_thread(
+        user_id=user_id,
+        title=title[:120],
+        mode=mode,
+        profile=st.session_state.profile,
+        patient_id=patient_id,
+    )
     st.session_state.active_thread_id = thread_id
+    st.session_state.active_thread_patient_id = patient_id
     st.session_state.session_id = thread_id
     return thread_id
 
@@ -348,8 +359,14 @@ if "last_generated_answer" not in st.session_state:
     st.session_state.last_generated_answer = ""
 if "active_thread_id" not in st.session_state:
     st.session_state.active_thread_id = None
+if "active_thread_patient_id" not in st.session_state:
+    st.session_state.active_thread_patient_id = None
 if "user" not in st.session_state:
     st.session_state.user = None
+if "selected_page" not in st.session_state:
+    st.session_state.selected_page = "Recomendações"
+if "recommendation_topic" not in st.session_state:
+    st.session_state.recommendation_topic = "Patologias"
 
 _handle_google_callback()
 
@@ -360,25 +377,56 @@ if not st.session_state.user:
 current_user = st.session_state.user
 
 with st.sidebar:
-    st.subheader("Painel de trabalho")
-    st.caption("Acompanhe a sessão e mantenha a consulta organizada.")
+    st.subheader("Nutri AI")
+    st.caption("Workspace do nutricionista")
     st.success(current_user.get("full_name") or current_user.get("email"))
-    page = st.radio(
-        "Navegação",
-        ["Recomendações", "Pacientes", "Triagem", "Documentos", "Trechos"],
-        index=0,
-        label_visibility="visible",
-    )
+    for page_name, label in [
+        ("Recomendações", "Novo chat"),
+        ("Pacientes", "Pacientes"),
+        ("Documentos", "Fontes"),
+        ("Trechos", "Evidências"),
+    ]:
+        selected = st.session_state.selected_page == page_name
+        if st.button(label, key=f"nav_{page_name}", type="primary" if selected else "secondary", use_container_width=True):
+            st.session_state.selected_page = page_name
+            if page_name == "Recomendações":
+                _reset_workspace_state()
+            st.rerun()
+    page = st.session_state.selected_page
+    st.divider()
+    st.markdown("**Pacientes**")
+    try:
+        sidebar_patients = list_patients(str(current_user["id"]))
+        if sidebar_patients:
+            for patient_row in sidebar_patients[:12]:
+                selected = st.session_state.get("selected_patient_id") == str(patient_row["id"]) and page == "Pacientes"
+                if st.button(
+                    patient_row["full_name"],
+                    key=f"sidebar_patient_{patient_row['id']}",
+                    type="primary" if selected else "secondary",
+                    use_container_width=True,
+                ):
+                    st.session_state.selected_patient_id = str(patient_row["id"])
+                    st.session_state.selected_page = "Pacientes"
+                    _reset_workspace_state()
+                    st.rerun()
+        else:
+            st.caption("Nenhum paciente ainda.")
+    except Exception as exc:
+        st.caption(f"Pacientes indisponíveis: {exc}")
     if st.button("Sair da conta"):
         for key in [
             "user",
             "active_thread_id",
+            "active_thread_patient_id",
             "profile",
             "messages",
             "last_evidence",
             "last_generated_answer",
             "session_id",
             "selected_patient_id",
+            "selected_page",
+            "recommendation_topic",
             "supabase_session",
             "google_oauth_code_verifier",
         ]:
@@ -389,21 +437,21 @@ with st.sidebar:
         _reset_workspace_state()
         st.rerun()
     st.divider()
-    st.markdown("**Histórico da conta**")
+    st.markdown("**Conversas gerais**")
     try:
         threads = list_chat_threads(str(current_user["id"]))
         if threads:
             for thread in threads:
                 label = f"{thread['title']} · {thread['mode']}"
-                if st.button(label, key=f"thread_{thread['id']}", use_container_width=True):
+                selected = st.session_state.get("active_thread_id") == str(thread["id"])
+                if st.button(label, key=f"thread_{thread['id']}", type="primary" if selected else "secondary", use_container_width=True):
                     _select_thread(str(current_user["id"]), str(thread["id"]))
+                    st.session_state.selected_page = "Recomendações"
                     st.rerun()
         else:
             st.caption("Nenhuma conversa salva ainda.")
     except Exception as exc:
         st.warning(f"Não consegui carregar o histórico: {exc}")
-    with st.expander("Perfil coletado"):
-        st.json(st.session_state.profile)
     st.divider()
     st.markdown("**Boas práticas**")
     st.markdown(
@@ -445,34 +493,23 @@ if page == "Recomendações":
         "Doença celíaca": "Quais cuidados devo reforçar sobre glúten e contaminação cruzada?",
     }
 
-    left, right = st.columns([0.36, 0.64], gap="large")
-    with left:
-        topic = st.radio("Tema de consulta", topic_options, label_visibility="visible")
-        st.markdown("**Atalhos úteis**")
-        st.markdown(
-            '<span class="source-chip">conduta</span>'
-            '<span class="source-chip">educação alimentar</span>'
-            '<span class="source-chip">risco</span>'
-            '<span class="source-chip">encaminhamento</span>',
-            unsafe_allow_html=True,
-        )
-    with right:
-        default_question = topic_examples.get(topic, "")
-        professional_question = st.text_area(
-            "Pergunta do profissional",
-            value=default_question,
-            placeholder="Descreva a dúvida, o público ou o contexto de atendimento.",
-            height=150,
-        )
-        st.caption("A resposta será acompanhada pelos trechos usados para fundamentação.")
+    st.markdown("**Tema**")
+    topic_columns = st.columns(4)
+    for index, option in enumerate(topic_options):
+        with topic_columns[index % 4]:
+            selected = st.session_state.recommendation_topic == option
+            if st.button(option, key=f"topic_{option}", type="primary" if selected else "secondary", use_container_width=True):
+                st.session_state.recommendation_topic = option
+                st.rerun()
+    topic = st.session_state.recommendation_topic
 
-    col_action, col_hint = st.columns([0.28, 0.72])
-    with col_action:
-        generate_clicked = st.button("Gerar recomendação", type="primary", use_container_width=True)
-    with col_hint:
-        st.info("Ideal para revisar orientações, preparar consulta, estudar patologias ou montar materiais educativos.")
+    recommendation_messages = st.session_state.messages if st.session_state.get("active_thread_id") else []
+    for message in recommendation_messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
 
-    if generate_clicked:
+    professional_question = st.chat_input(topic_examples.get(topic, "Digite sua pergunta para a base documental"))
+    if professional_question:
         if not professional_question.strip():
             st.warning("Escreva uma pergunta para buscar nas fontes.")
         else:
@@ -483,6 +520,11 @@ if page == "Recomendações":
                         f"{topic}: {professional_question[:70]}",
                         "professional",
                     )
+                    if (
+                        len(st.session_state.messages) == 1
+                        and st.session_state.messages[0]["content"].startswith("Vamos montar")
+                    ):
+                        st.session_state.messages = []
                     save_chat_message(
                         str(current_user["id"]),
                         thread_id,
@@ -509,8 +551,14 @@ if page == "Recomendações":
                         title=f"{topic}: {professional_question[:70]}",
                     )
                     st.session_state.last_generated_answer = answer
-                    st.markdown(answer)
-                    st.markdown(_format_evidence_section(st.session_state.last_evidence))
+                    user_message = f"[{topic}] {professional_question}"
+                    assistant_message = answer + _format_evidence_section(st.session_state.last_evidence)
+                    st.session_state.messages.append({"role": "user", "content": user_message})
+                    st.session_state.messages.append({"role": "assistant", "content": assistant_message})
+                    with st.chat_message("user"):
+                        st.markdown(user_message)
+                    with st.chat_message("assistant"):
+                        st.markdown(assistant_message)
                 except Exception as exc:
                     st.error(f"Nao consegui gerar a recomendacao: {exc}")
 
@@ -611,14 +659,9 @@ if page == "Pacientes":
                         except Exception as exc:
                             st.error(f"Nao consegui atualizar o paciente: {exc}")
 
-            patient_area = st.radio(
-                "Area do paciente",
-                ["Observacoes", "Documentos"],
-                horizontal=True,
-                label_visibility="collapsed",
-            )
+            observations_tab, documents_tab, chat_tab = st.tabs(["Observacoes", "Documentos", "Chat"])
 
-            if patient_area == "Observacoes":
+            with observations_tab:
                 with st.form(f"observation_form_{patient['id']}", clear_on_submit=True):
                     category = st.selectbox(
                         "Tipo",
@@ -648,7 +691,7 @@ if page == "Pacientes":
                 except Exception as exc:
                     st.warning(f"Nao consegui listar observacoes: {exc}")
 
-            if patient_area == "Documentos":
+            with documents_tab:
                 with st.form(f"patient_document_form_{patient['id']}", clear_on_submit=True):
                     doc_title = st.text_input("Titulo do documento")
                     doc_type = st.selectbox(
@@ -697,6 +740,83 @@ if page == "Pacientes":
                         st.info("Nenhum documento salvo para este paciente.")
                 except Exception as exc:
                     st.warning(f"Nao consegui listar documentos do paciente: {exc}")
+
+            with chat_tab:
+                st.caption("Chat do paciente: o que foi discutido fica vinculado ao cadastro selecionado.")
+                try:
+                    patient_threads = list_patient_chat_threads(user_id, str(patient["id"]))
+                    if patient_threads:
+                        st.markdown("**Conversas do paciente**")
+                        for thread in patient_threads:
+                            selected = st.session_state.get("active_thread_id") == str(thread["id"])
+                            if st.button(
+                                thread["title"],
+                                key=f"patient_thread_{thread['id']}",
+                                type="primary" if selected else "secondary",
+                                use_container_width=True,
+                            ):
+                                _select_thread(user_id, str(thread["id"]))
+                                st.rerun()
+                    else:
+                        st.caption("Nenhuma conversa vinculada a este paciente.")
+                except Exception as exc:
+                    st.warning(f"Nao consegui carregar conversas do paciente: {exc}")
+
+                for message in st.session_state.messages:
+                    with st.chat_message(message["role"]):
+                        st.markdown(message["content"])
+
+                patient_prompt = st.chat_input(f"Conversar sobre {patient['full_name']}")
+                if patient_prompt:
+                    thread_id = _ensure_thread(
+                        user_id,
+                        f"{patient['full_name']}: {patient_prompt[:70]}",
+                        "patient_triage",
+                        patient_id=str(patient["id"]),
+                    )
+                    save_chat_message(user_id, thread_id, "user", patient_prompt, metadata={"kind": "patient_chat"})
+                    st.session_state.messages.append({"role": "user", "content": patient_prompt})
+                    with st.chat_message("user"):
+                        st.markdown(patient_prompt)
+
+                    try:
+                        state = run_pingpong(
+                            session_id=st.session_state.session_id,
+                            profile=st.session_state.profile,
+                            user_message=patient_prompt,
+                        )
+                        st.session_state.profile = state.get("profile", {})
+                        st.session_state.last_evidence = _extract_evidence(state)
+                        if state.get("plan"):
+                            response = (
+                                "Dados essenciais completos. Rascunho para revisao profissional:\n\n"
+                                f"```json\n{json.dumps(state['plan'], ensure_ascii=False, indent=2)}\n```"
+                            )
+                        else:
+                            response = state.get("next_question") or "Preciso de mais uma informacao para continuar."
+                        response += _format_evidence_section(st.session_state.last_evidence)
+                    except Exception as exc:
+                        st.session_state.last_evidence = []
+                        response = f"Nao consegui continuar o chat do paciente agora. Detalhe tecnico: `{exc}`"
+
+                    save_chat_message(
+                        user_id,
+                        thread_id,
+                        "assistant",
+                        response,
+                        evidence=st.session_state.last_evidence,
+                        metadata={"kind": "patient_chat_response"},
+                    )
+                    update_chat_thread_state(
+                        user_id,
+                        thread_id,
+                        profile=st.session_state.profile,
+                        last_evidence=st.session_state.last_evidence,
+                    )
+                    st.session_state.last_generated_answer = response
+                    st.session_state.messages.append({"role": "assistant", "content": response})
+                    with st.chat_message("assistant"):
+                        st.markdown(response)
 
 if page == "Documentos":
     st.subheader("Documentos usados pelo RAG")
