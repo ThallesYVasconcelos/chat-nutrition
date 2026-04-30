@@ -57,16 +57,36 @@ def list_document_sources() -> list[dict[str, Any]]:
             cur.execute(
                 """
                 select
-                  title,
-                  source,
-                  count(*) as chunks,
-                  min(created_at) as first_ingested_at
+                  title
                 from public.nutrition_documents
-                group by title, source
-                order by title, source
+                group by title
+                order by title
                 """
             )
-            return list(cur.fetchall())
+            rows = list(cur.fetchall())
+    unique_titles = sorted({_technical_document_title(row["title"]) for row in rows})
+    return [{"title": title} for title in unique_titles]
+
+
+def _technical_document_title(title: str) -> str:
+    titles = {
+        "Circunferência da Cintura - Obesidade no adulto": "Obesidade no adulto: circunferência da cintura",
+        "Definição - Obesidade no adulto": "Obesidade no adulto: definição e critérios gerais",
+        "Rastreamento_diagnóstico - Obesidade no Adulto": "Obesidade no adulto: rastreamento e diagnóstico",
+        "Índice de massa corporal (IMC) - Obesidade no adulto": "Obesidade no adulto: índice de massa corporal (IMC)",
+        "creche_amamentacao_alimentacao_saudavel_livreto_gestores": (
+            "Alimentação saudável na creche: amamentação e gestão alimentar"
+        ),
+        "guia_alimentar_populacao_brasileira_2ed": "Guia Alimentar para a População Brasileira",
+        "guia_alimentar_populacao_brasileira_2ed (1)": "Guia Alimentar para a População Brasileira",
+        "guia_da_crianca_2019": "Guia Alimentar para Crianças Brasileiras Menores de 2 Anos",
+        "guia_da_crianca_2019 (1)": "Guia Alimentar para Crianças Brasileiras Menores de 2 Anos",
+        "PCDT DM2_17.04.2024_MSM": "PCDT: diabetes mellitus tipo 2",
+        "PCDT Hipertensão Arterial Sistêmica": "PCDT: hipertensão arterial sistêmica",
+        "PCDT_DoencaCeliaca": "PCDT: doença celíaca",
+        "protocolo_sisvan": "SISVAN: protocolos de vigilância alimentar e nutricional",
+    }
+    return titles.get(title, title.replace("_", " ").strip())
 
 
 def create_app_user(email: str, password: str, full_name: str | None = None) -> dict[str, Any]:

@@ -422,21 +422,10 @@ with docs_tab:
     try:
         sources = list_document_sources()
         if sources:
-            total_chunks = sum(int(row.get("chunks") or 0) for row in sources)
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Documentos", len(sources))
-            c2.metric("Trechos indexados", total_chunks)
-            c3.metric("Busca vetorial", "pgvector")
             st.dataframe(
-                sources,
+                [{"Documento": row["title"]} for row in sources],
                 use_container_width=True,
                 hide_index=True,
-                column_config={
-                    "title": "Documento",
-                    "source": "Arquivo fonte",
-                    "chunks": "Trechos",
-                    "first_ingested_at": "Ingestão",
-                },
             )
         else:
             st.info("Nenhum documento encontrado no banco vetorial.")
