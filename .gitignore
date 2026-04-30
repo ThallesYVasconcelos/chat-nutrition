@@ -1,0 +1,7 @@
+.env
+.deps/
+__pycache__/
+*.py[cod]
+.streamlit/secrets.toml
+data/reference_docs/*_files/
+data/reference_docs/* (1).pdf
