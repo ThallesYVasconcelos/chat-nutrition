@@ -87,10 +87,14 @@ function PandaLogo({ compact = false }: { compact?: boolean }) {
     <div className={compact ? "panda-logo compact" : "panda-logo"} aria-hidden="true">
       <span className="panda-ear left" />
       <span className="panda-ear right" />
+      <span className="panda-leaf" />
       <span className="panda-face">
         <span className="panda-eye left" />
         <span className="panda-eye right" />
+        <span className="panda-cheek left" />
+        <span className="panda-cheek right" />
         <span className="panda-nose" />
+        <span className="panda-mouth" />
       </span>
     </div>
   );
