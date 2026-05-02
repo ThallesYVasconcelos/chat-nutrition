@@ -759,6 +759,7 @@ button {
 .composer textarea,
 .client-form input,
 .client-form textarea,
+.client-form select,
 .note-form textarea,
 .note-form select {
   width: 100%;
@@ -1015,8 +1016,26 @@ button {
 }
 
 .client-form .wide,
-.details-grid .wide {
+.details-grid .wide,
+.form-section-title {
   grid-column: 1 / -1;
+}
+
+.form-section-title {
+  display: grid;
+  gap: 4px;
+  border-top: 1px solid var(--line);
+  margin-top: 4px;
+  padding-top: 16px;
+}
+
+.form-section-title strong {
+  color: var(--text);
+}
+
+.form-section-title span {
+  color: var(--muted);
+  font-size: 0.86rem;
 }
 
 .client-form textarea,
@@ -1096,6 +1115,8 @@ button {
 
 .patient-modal {
   width: min(560px, 100%);
+  max-height: min(86vh, 820px);
+  overflow: auto;
   padding: 24px;
 }
 

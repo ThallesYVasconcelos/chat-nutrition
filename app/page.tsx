@@ -38,6 +38,20 @@ type ClientFormValue = {
   email: string;
   objective: string;
   notes: string;
+  sex: string;
+  weightKg: string;
+  heightCm: string;
+  waistCm: string;
+  hipCm: string;
+  socioeconomic: string;
+  budget: string;
+  mealsPerDay: string;
+  routine: string;
+  preferences: string;
+  restrictions: string;
+  allergies: string;
+  pathologies: string;
+  medications: string;
 };
 
 const API_BASE = "";
@@ -103,6 +117,61 @@ function clientToFormValue(client: Client | null): ClientFormValue {
     email: client?.email || "",
     objective: client?.objective || "",
     notes: client?.notes || "",
+    sex: "",
+    weightKg: "",
+    heightCm: "",
+    waistCm: "",
+    hipCm: "",
+    socioeconomic: "",
+    budget: "",
+    mealsPerDay: "",
+    routine: "",
+    preferences: "",
+    restrictions: "",
+    allergies: "",
+    pathologies: "",
+    medications: "",
+  };
+}
+
+function calculateBmi(weightKg: string, heightCm: string): string {
+  const weight = Number(weightKg.replace(",", "."));
+  const height = Number(heightCm.replace(",", ".")) / 100;
+  if (!weight || !height) return "";
+  return (weight / (height * height)).toFixed(1).replace(".", ",");
+}
+
+function buildPatientPayload(value: ClientFormValue) {
+  const bmi = calculateBmi(value.weightKg, value.heightCm);
+  const clinicalRows = [
+    ["Sexo", value.sex],
+    ["Peso", value.weightKg ? `${value.weightKg} kg` : ""],
+    ["Altura", value.heightCm ? `${value.heightCm} cm` : ""],
+    ["IMC calculado", bmi],
+    ["Cintura", value.waistCm ? `${value.waistCm} cm` : ""],
+    ["Quadril", value.hipCm ? `${value.hipCm} cm` : ""],
+    ["Condição socioeconômica", value.socioeconomic],
+    ["Orçamento alimentar", value.budget],
+    ["Refeições por dia", value.mealsPerDay],
+    ["Rotina", value.routine],
+    ["Preferências alimentares", value.preferences],
+    ["Restrições", value.restrictions],
+    ["Alergias", value.allergies],
+    ["Patologias", value.pathologies],
+    ["Medicamentos", value.medications],
+  ].filter(([, fieldValue]) => fieldValue.trim());
+
+  const structuredNotes = clinicalRows.length
+    ? `\n\nDados clínicos estruturados para o chat:\n${clinicalRows.map(([label, fieldValue]) => `- ${label}: ${fieldValue}`).join("\n")}`
+    : "";
+
+  return {
+    fullName: value.fullName,
+    birthDate: value.birthDate,
+    phone: value.phone,
+    email: value.email,
+    objective: value.objective,
+    notes: `${value.notes.trim()}${structuredNotes}`.trim(),
   };
 }
 
@@ -286,14 +355,7 @@ export default function Page() {
   const [patientSearch, setPatientSearch] = useState("");
   const [showNewPatientModal, setShowNewPatientModal] = useState(false);
 
-  const [newClient, setNewClient] = useState<ClientFormValue>({
-    fullName: "",
-    birthDate: "",
-    phone: "",
-    email: "",
-    objective: "",
-    notes: "",
-  });
+  const [newClient, setNewClient] = useState<ClientFormValue>(clientToFormValue(null));
   const [editClient, setEditClient] = useState<ClientFormValue>(clientToFormValue(null));
 
   const selectedClient = clients.find((client) => client.id === selectedClientId) || null;
@@ -404,9 +466,9 @@ export default function Page() {
     if (!accessToken || !newClient.fullName.trim()) return;
     const created = await api<{ patientId: string }>("/api/patients", accessToken, {
       method: "POST",
-      body: JSON.stringify(newClient),
+      body: JSON.stringify(buildPatientPayload(newClient)),
     });
-    setNewClient({ fullName: "", birthDate: "", phone: "", email: "", objective: "", notes: "" });
+    setNewClient(clientToFormValue(null));
     await refreshWorkspace(accessToken);
     setSelectedClientId(created.patientId);
     setThreadId("");
@@ -420,7 +482,7 @@ export default function Page() {
     if (!accessToken || !selectedClientId || !editClient.fullName.trim()) return;
     await api(`/api/patients/${selectedClientId}`, accessToken, {
       method: "PATCH",
-      body: JSON.stringify(editClient),
+      body: JSON.stringify(buildPatientPayload(editClient)),
     });
     await refreshWorkspace(accessToken);
     setClientTab("record");
@@ -1028,6 +1090,7 @@ function ClientForm({
   value: ClientFormValue;
   onChange: (value: ClientFormValue) => void;
 }) {
+  const bmi = calculateBmi(value.weightKg, value.heightCm);
   return (
     <div className="client-form">
       <label>
@@ -1053,6 +1116,75 @@ function ClientForm({
       <label className="wide">
         Resumo inicial
         <textarea value={value.notes} onChange={(event) => onChange({ ...value, notes: event.target.value })} />
+      </label>
+      <div className="form-section-title">
+        <strong>Mais informações para o chat</strong>
+        <span>Esses dados entram no contexto e evitam perguntas repetidas.</span>
+      </div>
+      <label>
+        Sexo
+        <select value={value.sex} onChange={(event) => onChange({ ...value, sex: event.target.value })}>
+          <option value="">Não informado</option>
+          <option value="feminino">Feminino</option>
+          <option value="masculino">Masculino</option>
+          <option value="outro">Outro</option>
+        </select>
+      </label>
+      <label>
+        Peso
+        <input placeholder="kg" value={value.weightKg} onChange={(event) => onChange({ ...value, weightKg: event.target.value })} />
+      </label>
+      <label>
+        Altura
+        <input placeholder="cm" value={value.heightCm} onChange={(event) => onChange({ ...value, heightCm: event.target.value })} />
+      </label>
+      <label>
+        IMC
+        <input value={bmi || "Preencha peso e altura"} readOnly />
+      </label>
+      <label>
+        Cintura
+        <input placeholder="cm" value={value.waistCm} onChange={(event) => onChange({ ...value, waistCm: event.target.value })} />
+      </label>
+      <label>
+        Quadril
+        <input placeholder="cm" value={value.hipCm} onChange={(event) => onChange({ ...value, hipCm: event.target.value })} />
+      </label>
+      <label>
+        Condição socioeconômica
+        <input value={value.socioeconomic} onChange={(event) => onChange({ ...value, socioeconomic: event.target.value })} />
+      </label>
+      <label>
+        Orçamento alimentar
+        <input placeholder="Ex.: baixo, R$ 150/semana" value={value.budget} onChange={(event) => onChange({ ...value, budget: event.target.value })} />
+      </label>
+      <label>
+        Refeições por dia
+        <input value={value.mealsPerDay} onChange={(event) => onChange({ ...value, mealsPerDay: event.target.value })} />
+      </label>
+      <label>
+        Rotina
+        <input value={value.routine} onChange={(event) => onChange({ ...value, routine: event.target.value })} />
+      </label>
+      <label className="wide">
+        Preferências alimentares
+        <input value={value.preferences} onChange={(event) => onChange({ ...value, preferences: event.target.value })} />
+      </label>
+      <label className="wide">
+        Restrições e aversões
+        <input value={value.restrictions} onChange={(event) => onChange({ ...value, restrictions: event.target.value })} />
+      </label>
+      <label className="wide">
+        Alergias
+        <input value={value.allergies} onChange={(event) => onChange({ ...value, allergies: event.target.value })} />
+      </label>
+      <label className="wide">
+        Patologias
+        <input value={value.pathologies} onChange={(event) => onChange({ ...value, pathologies: event.target.value })} />
+      </label>
+      <label className="wide">
+        Medicamentos
+        <input value={value.medications} onChange={(event) => onChange({ ...value, medications: event.target.value })} />
       </label>
     </div>
   );
