@@ -1092,6 +1092,38 @@ button {
   margin: 0 0 8px;
 }
 
+.intro-client-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface-2);
+}
+
+.intro-client-strip span,
+.intro-client-strip small {
+  color: var(--muted);
+}
+
+.intro-client-strip span {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.intro-client-strip strong {
+  color: var(--text);
+}
+
+.intro-client-strip small {
+  margin-left: auto;
+}
+
 .starter-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1592,6 +1624,14 @@ button {
 
   .client-summary {
     width: 100%;
+  }
+
+  .intro-client-strip {
+    display: grid;
+  }
+
+  .intro-client-strip small {
+    margin-left: 0;
   }
 
   .starter-grid,

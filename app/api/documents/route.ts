@@ -13,7 +13,7 @@ export async function GET() {
         count(*)::text as chunks
       from public.nutrition_documents
       group by title
-      order by title
+      order by count(*) desc, title
       `
     );
     return NextResponse.json({ documents: rows });

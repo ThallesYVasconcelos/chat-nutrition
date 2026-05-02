@@ -770,23 +770,6 @@ export default function Page() {
 
         {view === "plan" && (
           <section className="planner-view">
-            <header className="page-header">
-              <div>
-                <p className="eyebrow">Chat ping-pong</p>
-                <h1>Plano alimentar para cliente</h1>
-                <p>
-                  O assistente coleta uma informação por vez, identifica lacunas e só consolida o plano quando houver contexto suficiente.
-                </p>
-              </div>
-              {selectedClient && (
-                <div className="client-summary">
-                  <span>Cliente ativo</span>
-                  <strong>{selectedClient.full_name}</strong>
-                  <small>{selectedClient.objective || "Sem objetivo registrado"}</small>
-                </div>
-              )}
-            </header>
-
             {!selectedClient ? (
               <EmptyClientState onCreate={() => setView("patients")} />
             ) : (
@@ -795,8 +778,17 @@ export default function Page() {
                   <div className="message-list">
                     {messages.length === 0 && (
                       <div className="empty-chat">
-                        <h2>Comece pela primeira pergunta clínica.</h2>
-                        <p>Use um atalho ou descreva o caso. A IA deve perguntar o próximo dado faltante antes de fechar o plano.</p>
+                        <p className="eyebrow">Chat guiado</p>
+                        <h2>Plano alimentar para {selectedClient.full_name}</h2>
+                        <p>
+                          Use este chat para construir o plano com segurança: ele considera os dados do paciente, pergunta apenas o que
+                          ainda falta e só organiza um rascunho quando houver contexto suficiente para revisão profissional.
+                        </p>
+                        <div className="intro-client-strip">
+                          <span>Cliente ativo</span>
+                          <strong>{selectedClient.full_name}</strong>
+                          <small>{selectedClient.objective || "Objetivo ainda não registrado"}</small>
+                        </div>
                         <div className="starter-grid">
                           {STARTER_PROMPTS.map((prompt) => (
                             <button key={prompt} onClick={() => sendPlanMessage(prompt)}>
