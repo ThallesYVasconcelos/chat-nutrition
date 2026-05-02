@@ -12,6 +12,15 @@ const createPatientSchema = z.object({
   notes: z.string().optional().nullable(),
 });
 
+function normalizeDate(value?: string | null): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
+  const date = new Date(`${trimmed}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return null;
+  return trimmed;
+}
+
 type PatientRow = {
   id: string;
   full_name: string;
@@ -58,13 +67,13 @@ export async function POST(request: NextRequest) {
     const rows = await sql<{ id: string }>(
       `
       insert into public.patients (user_id, full_name, birth_date, phone, email, objective, notes)
-      values ($1, $2, nullif($3, '')::date, nullif($4, ''), nullif($5, ''), nullif($6, ''), nullif($7, ''))
+      values ($1, $2, $3::date, nullif($4, ''), nullif($5, ''), nullif($6, ''), nullif($7, ''))
       returning id::text as id
       `,
       [
         user.id,
         parsed.fullName.trim(),
-        parsed.birthDate || "",
+        normalizeDate(parsed.birthDate),
         parsed.phone || "",
         parsed.email || "",
         parsed.objective || "",

@@ -165,6 +165,11 @@ function calculateBmi(weightKg: string, heightCm: string): string {
   return (weight / (height * height)).toFixed(1).replace(".", ",");
 }
 
+function normalizeBirthDate(value: string): string {
+  const trimmed = value.trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? trimmed : "";
+}
+
 function buildPatientPayload(value: ClientFormValue) {
   const bmi = calculateBmi(value.weightKg, value.heightCm);
   const clinicalRows = [
@@ -191,7 +196,7 @@ function buildPatientPayload(value: ClientFormValue) {
 
   return {
     fullName: value.fullName,
-    birthDate: value.birthDate,
+    birthDate: normalizeBirthDate(value.birthDate),
     phone: value.phone,
     email: value.email,
     objective: value.objective,
@@ -1128,7 +1133,7 @@ function ClientForm({
       </label>
       <label>
         Nascimento
-        <input placeholder="AAAA-MM-DD" value={value.birthDate} onChange={(event) => onChange({ ...value, birthDate: event.target.value })} />
+        <input type="date" value={normalizeBirthDate(value.birthDate)} onChange={(event) => onChange({ ...value, birthDate: event.target.value })} />
       </label>
       <label>
         Telefone

@@ -12,6 +12,15 @@ const patchSchema = z.object({
   notes: z.string().optional().nullable(),
 });
 
+function normalizeDate(value?: string | null): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
+  const date = new Date(`${trimmed}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return null;
+  return trimmed;
+}
+
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireAppUser();
@@ -49,7 +58,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       `
       update public.patients
       set full_name = $1,
-          birth_date = nullif($2, '')::date,
+          birth_date = $2::date,
           phone = nullif($3, ''),
           email = nullif($4, ''),
           objective = nullif($5, ''),
@@ -58,7 +67,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       `,
       [
         payload.fullName.trim(),
-        payload.birthDate || "",
+        normalizeDate(payload.birthDate),
         payload.phone || "",
         payload.email || "",
         payload.objective || "",
