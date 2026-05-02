@@ -106,6 +106,25 @@ function clientToFormValue(client: Client | null): ClientFormValue {
   };
 }
 
+function patientAgeLabel(client: Client): string {
+  if (!client.birth_date) return "Idade não informada";
+  const birth = new Date(client.birth_date);
+  if (Number.isNaN(birth.getTime())) return "Idade não informada";
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const monthDiff = today.getMonth() - birth.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) age -= 1;
+  return age >= 0 ? `${age} anos` : "Idade não informada";
+}
+
+function patientTags(client: Client): string[] {
+  return (client.objective || client.notes || "Sem condição registrada")
+    .split(/[,;|]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 3);
+}
+
 function wrapPdfLine(text: string, width = 88): string[] {
   const words = text.replace(/\s+/g, " ").trim().split(" ");
   const lines: string[] = [];
@@ -249,7 +268,7 @@ export default function Page() {
   const [appUser, setAppUser] = useState<AppUser | null>(null);
   const [authError, setAuthError] = useState("");
 
-  const [view, setView] = useState<"plan" | "recommendations" | "clients">("plan");
+  const [view, setView] = useState<"dashboard" | "plan" | "recommendations" | "patients">("dashboard");
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientId, setSelectedClientId] = useState("");
   const [clientTab, setClientTab] = useState<"chat" | "record" | "notes">("chat");
@@ -264,6 +283,8 @@ export default function Page() {
   const [professionalInput, setProfessionalInput] = useState("");
   const [professionalMessages, setProfessionalMessages] = useState<ChatMessage[]>([]);
   const [isProfessionalSending, setIsProfessionalSending] = useState(false);
+  const [patientSearch, setPatientSearch] = useState("");
+  const [showNewPatientModal, setShowNewPatientModal] = useState(false);
 
   const [newClient, setNewClient] = useState<ClientFormValue>({
     fullName: "",
@@ -276,6 +297,12 @@ export default function Page() {
   const [editClient, setEditClient] = useState<ClientFormValue>(clientToFormValue(null));
 
   const selectedClient = clients.find((client) => client.id === selectedClientId) || null;
+  const filteredClients = clients.filter((client) =>
+    [client.full_name, client.email || "", client.objective || "", client.notes || ""]
+      .join(" ")
+      .toLowerCase()
+      .includes(patientSearch.toLowerCase())
+  );
 
   useEffect(() => {
     if (!supabase) return;
@@ -385,6 +412,7 @@ export default function Page() {
     setThreadId("");
     setMessages([]);
     setClientTab("chat");
+    setShowNewPatientModal(false);
     setView("plan");
   }
 
@@ -411,7 +439,7 @@ export default function Page() {
     setObservations([]);
     setThreads([]);
     await refreshWorkspace(accessToken);
-    setView("clients");
+    setView("patients");
   }
 
   async function addObservation() {
@@ -510,97 +538,113 @@ export default function Page() {
 
   return (
     <div className="workspace">
-      <aside className="sidebar">
-        <div className="side-head">
-          <div className="profile-block">
-            <PandaLogo compact />
-            <div>
-              <div className="brand">Prato Clínico</div>
-              <p>{appUser.full_name || authEmail}</p>
-            </div>
+      <header className="topbar">
+        <div className="topbar-brand">
+          <PandaLogo compact />
+          <div>
+            <div className="brand">Prato Clínico</div>
+            <p>Sistema de Nutrição</p>
           </div>
-          <button className="icon-button" onClick={logout} title="Sair da conta">
-            Sair
-          </button>
         </div>
 
-        <nav className="nav-list">
-          <button className={view === "plan" ? "nav-item active" : "nav-item"} onClick={() => setView("plan")}>
-            Plano alimentar guiado
+        <nav className="topnav">
+          <button className={view === "dashboard" ? "nav-item active" : "nav-item"} onClick={() => setView("dashboard")}>
+            Dashboard
+          </button>
+          <button
+            className={view === "patients" || view === "plan" ? "nav-item active" : "nav-item"}
+            onClick={() => setView("patients")}
+          >
+            Pacientes
           </button>
           <button
             className={view === "recommendations" ? "nav-item active" : "nav-item"}
             onClick={() => setView("recommendations")}
           >
-            Recomendações profissionais
-          </button>
-          <button className={view === "clients" ? "nav-item active" : "nav-item"} onClick={() => setView("clients")}>
-            Clientes
+            Recomendações
           </button>
         </nav>
 
-        <div className="user-chip">
+        <div className="topbar-user">
           {appUser.avatar_url ? (
             <img className="profile-photo" src={appUser.avatar_url} alt="Foto do perfil" referrerPolicy="no-referrer" />
           ) : (
             <div className="profile-fallback">{(appUser.full_name || authEmail || "P").slice(0, 1).toUpperCase()}</div>
           )}
-          <span>{appUser.full_name || authEmail}</span>
+          <button className="icon-button" onClick={logout} title="Sair da conta">
+            Sair
+          </button>
         </div>
-
-        <div className="sidebar-section">
-          <div className="section-row">
-            <span>Clientes</span>
-            <button
-              className="mini-action"
-              onClick={() => {
-                setSelectedClientId("");
-                setView("clients");
-              }}
-            >
-              Novo
-            </button>
-          </div>
-          <div className="client-list">
-            {clients.map((client) => (
-              <button
-                key={client.id}
-                className={selectedClientId === client.id ? "client-item active" : "client-item"}
-                onClick={() => {
-                  setSelectedClientId(client.id);
-                  setThreadId("");
-                  setMessages([]);
-                  setView("plan");
-                }}
-              >
-                <strong>{client.full_name}</strong>
-                <span>{client.objective || "Objetivo não definido"}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {threads.length > 0 && (
-          <div className="sidebar-section">
-            <div className="section-row">
-              <span>Conversas do cliente</span>
-            </div>
-            <div className="client-list">
-              {threads.map((thread) => (
-                <button
-                  key={thread.id}
-                  className={thread.id === threadId ? "thread-item active" : "thread-item"}
-                  onClick={() => setThreadId(thread.id)}
-                >
-                  {thread.title}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </aside>
+      </header>
 
       <main className="main-area">
+        {view === "dashboard" && (
+          <section className="dashboard-view">
+            <header className="page-header">
+              <div>
+                <p className="eyebrow">Visão geral</p>
+                <h1>Rotina clínica em um só lugar</h1>
+                <p>Acompanhe pacientes recentes e continue rapidamente o chat de plano alimentar.</p>
+              </div>
+              <button className="primary-action" onClick={() => setShowNewPatientModal(true)}>
+                Novo paciente
+              </button>
+            </header>
+
+            <section className="dashboard-panel">
+              <div className="panel-title">
+                <h2>Pacientes recentes</h2>
+                <button className="text-action" onClick={() => setView("patients")}>
+                  Ver todos
+                </button>
+              </div>
+              <div className="recent-list">
+                {clients.slice(0, 5).map((client) => (
+                  <button
+                    key={client.id}
+                    className="recent-row"
+                    onClick={() => {
+                      setSelectedClientId(client.id);
+                      setThreadId("");
+                      setMessages([]);
+                      setView("plan");
+                    }}
+                  >
+                    <span className="avatar-dot">{client.full_name.slice(0, 1).toUpperCase()}</span>
+                    <span>
+                      <strong>{client.full_name}</strong>
+                      <small>
+                        {patientAgeLabel(client)} · {client.objective || "Objetivo não definido"}
+                      </small>
+                    </span>
+                    <span className="row-icon">Chat</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section className="dashboard-panel">
+              <div className="panel-title">
+                <h2>Atividade recente</h2>
+                <button className="text-action" onClick={() => setView("recommendations")}>
+                  Recomendações
+                </button>
+              </div>
+              <div className="recent-list">
+                {clients.slice(0, 3).map((client) => (
+                  <div key={client.id} className="activity-row">
+                    <span className="activity-icon">Chat</span>
+                    <span>
+                      <strong>{client.full_name}</strong>
+                      <small>{client.notes || "Continue a coleta pelo chat ping-pong."}</small>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </section>
+        )}
+
         {view === "plan" && (
           <section className="planner-view">
             <header className="page-header">
@@ -621,7 +665,7 @@ export default function Page() {
             </header>
 
             {!selectedClient ? (
-              <EmptyClientState onCreate={() => setView("clients")} />
+              <EmptyClientState onCreate={() => setView("patients")} />
             ) : (
               <div className="chat-layout">
                 <div className="chat-main">
@@ -674,7 +718,8 @@ export default function Page() {
                       onChange={(event) => setChatInput(event.target.value)}
                       placeholder="Responda a pergunta atual ou descreva o próximo dado do cliente..."
                       onKeyDown={(event) => {
-                        if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                        if (event.key === "Enter" && !event.shiftKey) {
+                          event.preventDefault();
                           sendPlanMessage().catch(() => void 0);
                         }
                       }}
@@ -733,6 +778,12 @@ export default function Page() {
                     </button>
                   ))}
                 </div>
+                <div className="permission-panel">
+                  <h3>Escopo da resposta</h3>
+                  <button className="permission-item active">Usar documentos oficiais</button>
+                  <button className="permission-item active">Mostrar trechos rastreáveis</button>
+                  <button className="permission-item">Sinalizar lacunas clínicas</button>
+                </div>
               </aside>
 
               <div className="chat-main">
@@ -780,7 +831,8 @@ export default function Page() {
                     onChange={(event) => setProfessionalInput(event.target.value)}
                     placeholder={`Pergunte sobre ${professionalTopic.toLowerCase()}...`}
                     onKeyDown={(event) => {
-                      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
                         sendProfessionalQuestion().catch(() => void 0);
                       }
                     }}
@@ -794,97 +846,120 @@ export default function Page() {
           </section>
         )}
 
-        {view === "clients" && (
-          <section className="clients-view">
-            <header className="page-header compact">
+        {view === "patients" && (
+          <section className="patients-view">
+            <header className="page-header">
               <div>
-                <p className="eyebrow">Cadastro clínico</p>
-                <h1>{selectedClient ? selectedClient.full_name : "Novo cliente"}</h1>
+                <p className="eyebrow">Pacientes</p>
+                <h1>Gerenciamento de pacientes</h1>
+                <p>Gerencie todos os seus pacientes em um só lugar.</p>
               </div>
+              <button className="primary-action" onClick={() => setShowNewPatientModal(true)}>
+                Novo paciente
+              </button>
             </header>
 
-            {!selectedClient ? (
-              <section className="form-card">
-                <ClientForm value={newClient} onChange={setNewClient} />
-                <button className="primary-action" onClick={() => createClient().catch(() => void 0)}>
-                  Cadastrar cliente
-                </button>
-              </section>
-            ) : (
-              <section className="client-record">
-                <div className="segmented">
-                  <button className={clientTab === "chat" ? "active" : ""} onClick={() => setClientTab("chat")}>
-                    Chat do plano
-                  </button>
-                  <button className={clientTab === "record" ? "active" : ""} onClick={() => setClientTab("record")}>
-                    Dados
-                  </button>
-                  <button className={clientTab === "notes" ? "active" : ""} onClick={() => setClientTab("notes")}>
-                    Observações
-                  </button>
-                </div>
+            <div className="patient-toolbar">
+              <input
+                value={patientSearch}
+                onChange={(event) => setPatientSearch(event.target.value)}
+                placeholder="Buscar pacientes por nome, email, objetivo ou condição..."
+              />
+            </div>
 
-                {clientTab === "chat" && (
-                  <div className="record-panel">
-                    <p>Abra o chat guiado para continuar a coleta e construção do plano alimentar.</p>
-                    <button className="primary-action" onClick={() => setView("plan")}>
-                      Continuar plano alimentar
+            <div className="patient-grid">
+              {filteredClients.map((client) => (
+                <article key={client.id} className="patient-card">
+                  <div className="patient-head">
+                    <span className="patient-avatar">{client.full_name.slice(0, 1).toUpperCase()}</span>
+                    <div>
+                      <h2>{client.full_name}</h2>
+                      <p>{client.email || "Email não informado"}</p>
+                      <small>{patientAgeLabel(client)}</small>
+                    </div>
+                  </div>
+                  <div className="tag-row">
+                    {patientTags(client).map((tag) => (
+                      <span key={tag}>{tag}</span>
+                    ))}
+                  </div>
+                  <p className="patient-note">{client.notes || "Sem observações iniciais registradas."}</p>
+                  <div className="patient-actions">
+                    <button
+                      className="secondary-action"
+                      onClick={() => {
+                        setSelectedClientId(client.id);
+                        setClientTab("record");
+                      }}
+                    >
+                      Perfil
+                    </button>
+                    <button
+                      className="primary-action"
+                      onClick={() => {
+                        setSelectedClientId(client.id);
+                        setThreadId("");
+                        setMessages([]);
+                        setView("plan");
+                      }}
+                    >
+                      Chat
                     </button>
                   </div>
-                )}
+                </article>
+              ))}
+            </div>
 
-                {clientTab === "record" && (
-                  <div className="record-panel">
-                    <div className="record-actions">
-                      <div>
-                        <h2>Dados do cliente</h2>
-                        <p>Edite as informações que orientam o chat ping-pong e os planos gerados.</p>
-                      </div>
-                      <button className="danger-action" onClick={() => deleteClient().catch(() => void 0)}>
-                        Excluir cliente
-                      </button>
-                    </div>
-                    <ClientForm value={editClient} onChange={setEditClient} />
-                    <div className="form-actions">
-                      <button className="primary-action" onClick={() => updateClient().catch(() => void 0)}>
-                        Salvar alterações
-                      </button>
-                      <button className="mini-action" onClick={() => setEditClient(clientToFormValue(selectedClient))}>
-                        Desfazer
-                      </button>
-                    </div>
+            {selectedClient && clientTab === "record" && (
+              <section className="client-record inline-editor">
+                <div className="record-actions">
+                  <div>
+                    <h2>Editar {selectedClient.full_name}</h2>
+                    <p>Atualize os dados usados pelo chat de plano alimentar.</p>
                   </div>
-                )}
-
-                {clientTab === "notes" && (
-                  <div className="record-panel">
-                    <div className="note-form">
-                      <select id="obs-category">
-                        <option value="consulta">Consulta</option>
-                        <option value="evolucao">Evolução</option>
-                        <option value="conduta">Conduta</option>
-                        <option value="exame">Exame</option>
-                      </select>
-                      <textarea id="obs-note" placeholder="Registre uma observação objetiva..." />
-                      <button className="primary-action" onClick={() => addObservation().catch(() => void 0)}>
-                        Adicionar observação
-                      </button>
-                    </div>
-                    <div className="notes-list">
-                      {observations.map((obs) => (
-                        <article key={obs.id}>
-                          <strong>{obs.category}</strong>
-                          <p>{obs.note}</p>
-                        </article>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                  <button className="danger-action" onClick={() => deleteClient().catch(() => void 0)}>
+                    Excluir cliente
+                  </button>
+                </div>
+                <ClientForm value={editClient} onChange={setEditClient} />
+                <div className="form-actions">
+                  <button className="primary-action" onClick={() => updateClient().catch(() => void 0)}>
+                    Salvar alterações
+                  </button>
+                  <button className="mini-action" onClick={() => setSelectedClientId("")}>
+                    Fechar
+                  </button>
+                </div>
               </section>
             )}
           </section>
         )}
       </main>
+
+      {showNewPatientModal && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <section className="patient-modal">
+            <header>
+              <div>
+                <h2>Adicionar novo paciente</h2>
+                <p>Preencha os dados essenciais para começar o acompanhamento nutricional.</p>
+              </div>
+              <button className="icon-button" onClick={() => setShowNewPatientModal(false)}>
+                Fechar
+              </button>
+            </header>
+            <ClientForm value={newClient} onChange={setNewClient} />
+            <footer>
+              <button className="secondary-action" onClick={() => setShowNewPatientModal(false)}>
+                Cancelar
+              </button>
+              <button className="primary-action" onClick={() => createClient().catch(() => void 0)}>
+                Adicionar paciente
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
 
       {sourcePanel && (
         <div className="source-drawer" role="dialog" aria-modal="true">

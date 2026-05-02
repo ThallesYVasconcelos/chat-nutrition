@@ -42,9 +42,51 @@ button {
 }
 
 .workspace {
-  display: grid;
-  grid-template-columns: 292px minmax(0, 1fr);
   min-height: 100vh;
+  background: #f7f8f6;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  height: 72px;
+  display: grid;
+  grid-template-columns: 270px minmax(0, 1fr) 220px;
+  align-items: center;
+  gap: 18px;
+  border-bottom: 1px solid #dedede;
+  background: rgba(255, 255, 255, 0.96);
+  padding: 0 28px;
+  box-shadow: 0 2px 12px rgba(12, 18, 14, 0.08);
+  backdrop-filter: blur(10px);
+}
+
+.topbar-brand {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.topbar-brand p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.topnav {
+  justify-self: center;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.topbar-user {
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .sidebar {
@@ -295,7 +337,7 @@ button {
 .nav-item,
 .client-item,
 .thread-item {
-  width: 100%;
+  width: auto;
   border: 1px solid transparent;
   background: transparent;
   color: var(--text);
@@ -308,10 +350,10 @@ button {
 .nav-item.active,
 .client-item.active,
 .thread-item.active {
-  background: #e6f4ee;
-  border-color: #b9ddcf;
-  color: #0f5e48;
-  box-shadow: inset 3px 0 0 var(--accent);
+  background: #030215;
+  border-color: #030215;
+  color: #fff;
+  box-shadow: 0 10px 22px rgba(3, 2, 21, 0.2);
 }
 
 .nav-item:hover,
@@ -358,7 +400,7 @@ button {
 
 .main-area {
   min-width: 0;
-  padding: 28px 34px 34px;
+  padding: 34px clamp(22px, 4vw, 56px);
 }
 
 .page-header {
@@ -411,6 +453,98 @@ button {
 
 .client-summary strong {
   margin: 4px 0 2px;
+}
+
+.dashboard-view {
+  display: grid;
+  gap: 24px;
+}
+
+.dashboard-panel {
+  padding: 24px;
+}
+
+.panel-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.panel-title h2 {
+  margin: 0;
+  font-size: 1.12rem;
+}
+
+.text-action {
+  border: 0;
+  background: transparent;
+  color: #030215;
+  font-weight: 700;
+}
+
+.recent-list {
+  display: grid;
+  gap: 12px;
+}
+
+.recent-row,
+.activity-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  border: 0;
+  border-radius: 14px;
+  background: #f6f7f6;
+  padding: 13px;
+  text-align: left;
+}
+
+.activity-row {
+  grid-template-columns: 36px minmax(0, 1fr);
+}
+
+.recent-row strong,
+.activity-row strong {
+  display: block;
+}
+
+.recent-row small,
+.activity-row small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+}
+
+.avatar-dot,
+.activity-icon {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #04c769;
+  color: #fff;
+  font-weight: 800;
+}
+
+.avatar-dot {
+  width: 40px;
+  height: 40px;
+}
+
+.activity-icon {
+  width: 30px;
+  height: 30px;
+  background: #e6eeff;
+  color: #2457d6;
+  font-size: 0.72rem;
+}
+
+.row-icon {
+  color: #030215;
+  font-weight: 700;
 }
 
 .chat-layout {
@@ -469,16 +603,59 @@ button {
   border-color: #d7e2d1;
 }
 
+.permission-panel {
+  border-top: 1px solid var(--line);
+  margin-top: 14px;
+  padding-top: 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.permission-panel h3 {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.permission-item {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--text);
+  border-radius: 10px;
+  padding: 9px 10px;
+  text-align: left;
+}
+
+.permission-item.active {
+  background: #f0f7f2;
+  border-color: #b9ddcf;
+  color: #0f5e48;
+  font-weight: 700;
+}
+
 .chat-main,
 .context-panel,
 .form-card,
 .client-record,
 .empty-state,
-.record-panel {
+.record-panel,
+.dashboard-panel,
+.patient-card,
+.patient-modal {
   background: var(--surface);
-  border: 1px solid var(--line);
+  border: 1px solid #dedede;
   border-radius: 16px;
   box-shadow: var(--shadow-soft);
+}
+
+.dashboard-view,
+.patients-view,
+.recommendations-view,
+.planner-view {
+  max-width: 1240px;
+  margin: 0 auto;
 }
 
 .chat-main {
@@ -675,6 +852,112 @@ button {
   max-width: 980px;
 }
 
+.patients-view {
+  display: grid;
+  gap: 22px;
+}
+
+.patient-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.patient-toolbar input {
+  width: 100%;
+  border: 0;
+  background: #f0f1f2;
+  color: var(--text);
+  border-radius: 9px;
+  padding: 13px 16px;
+}
+
+.patient-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.patient-card {
+  padding: 24px;
+}
+
+.patient-head {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  align-items: start;
+  gap: 14px;
+}
+
+.patient-avatar {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #04c769;
+  color: #fff;
+  font-weight: 800;
+}
+
+.patient-head h2 {
+  margin: 3px 0 2px;
+  font-size: 1.1rem;
+}
+
+.patient-head p {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.patient-head small {
+  display: inline-flex;
+  border: 1px solid #dedede;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 24px 0 12px;
+}
+
+.tag-row span {
+  border-radius: 8px;
+  background: #eef0f3;
+  padding: 5px 9px;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.patient-note {
+  min-height: 42px;
+  margin: 0 0 18px;
+  color: #34443b;
+  line-height: 1.45;
+}
+
+.patient-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.secondary-action {
+  border: 1px solid #dedede;
+  background: #fff;
+  color: #030215;
+  border-radius: 12px;
+  padding: 11px 15px;
+  font-weight: 700;
+}
+
+.inline-editor {
+  margin-top: 8px;
+}
+
 .form-card,
 .client-record,
 .record-panel {
@@ -801,6 +1084,48 @@ button {
   z-index: 50;
 }
 
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  background: rgba(7, 8, 11, 0.55);
+  padding: 20px;
+}
+
+.patient-modal {
+  width: min(560px, 100%);
+  padding: 24px;
+}
+
+.patient-modal header,
+.patient-modal footer {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.patient-modal header {
+  margin-bottom: 20px;
+}
+
+.patient-modal footer {
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+
+.patient-modal h2 {
+  margin: 0 0 6px;
+}
+
+.patient-modal p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
 .source-card {
   width: min(520px, 100%);
   height: 100%;
@@ -881,14 +1206,24 @@ button {
 }
 
 @media (max-width: 1120px) {
-  .workspace {
+  .topbar {
     grid-template-columns: 1fr;
+    height: auto;
+    padding: 14px 18px;
   }
 
-  .sidebar {
-    position: static;
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
+  .topnav,
+  .topbar-user {
+    justify-self: stretch;
+  }
+
+  .topnav {
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .topbar-user {
+    justify-content: center;
   }
 
   .chat-layout {
@@ -913,6 +1248,18 @@ button {
     padding: 18px 14px;
   }
 
+  .topbar-brand {
+    justify-self: center;
+  }
+
+  .topnav {
+    gap: 6px;
+  }
+
+  .nav-item {
+    padding: 9px 10px;
+  }
+
   .page-header {
     display: grid;
   }
@@ -923,7 +1270,8 @@ button {
 
   .starter-grid,
   .client-form,
-  .details-grid {
+  .details-grid,
+  .patient-grid {
     grid-template-columns: 1fr;
   }
 
