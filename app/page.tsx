@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-type AppUser = { id: string; email: string; full_name: string | null };
+type AppUser = { id: string; email: string; full_name: string | null; avatar_url?: string | null };
 type Evidence = { id: string; title: string; source: string; excerpt: string; similarity?: number | null };
 type ResponseJudge = {
   passed: boolean;
@@ -57,6 +57,10 @@ function getSupabaseClient(): SupabaseClient | null {
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key) return null;
   return createClient(url, key);
+}
+
+function cleanAssistantText(content: string): string {
+  return content.replace(/\*\*(.*?)\*\*/g, "$1").trim();
 }
 
 async function api<T>(path: string, token: string, init?: RequestInit): Promise<T> {
@@ -305,11 +309,11 @@ export default function Page() {
     return (
       <main className="auth-shell">
         <section className="login-panel">
-          <div className="brand-mark">Nutri AI</div>
-          <p className="login-kicker">Planejamento alimentar assistido por evidências</p>
-          <h1>Construa planos alimentares com coleta guiada, contexto clínico e fontes rastreáveis.</h1>
+          <div className="brand-mark">Prato Clínico</div>
+          <p className="login-kicker">Planejamento alimentar com raciocínio clínico</p>
+          <h1>Conduza a conversa, organize o caso e gere um plano revisável.</h1>
           <p className="login-copy">
-            Um workspace para conduzir a conversa com o cliente, organizar dados essenciais e transformar a anamnese em um rascunho revisável.
+            Uma ferramenta simples para nutricionistas brasileiros coletarem dados, consultarem evidências e estruturarem recomendações com mais segurança.
           </p>
           <button className="google-button" onClick={loginWithGoogle}>
             Entrar com Google
@@ -324,9 +328,16 @@ export default function Page() {
     <div className="workspace">
       <aside className="sidebar">
         <div className="side-head">
-          <div>
-            <div className="brand">Nutri AI</div>
-            <p>{authEmail}</p>
+          <div className="profile-block">
+            {appUser.avatar_url ? (
+              <img className="profile-photo" src={appUser.avatar_url} alt="" referrerPolicy="no-referrer" />
+            ) : (
+              <div className="profile-fallback">{(appUser.full_name || authEmail || "P").slice(0, 1).toUpperCase()}</div>
+            )}
+            <div>
+              <div className="brand">Prato Clínico</div>
+              <p>{appUser.full_name || authEmail}</p>
+            </div>
           </div>
           <button className="icon-button" onClick={logout} title="Sair da conta">
             Sair
@@ -442,8 +453,8 @@ export default function Page() {
 
                     {messages.map((message, index) => (
                       <article key={index} className={message.role === "user" ? "message user" : "message assistant"}>
-                        <div className="message-label">{message.role === "user" ? "Profissional" : "Nutri AI"}</div>
-                        <div className="message-content">{message.content}</div>
+                        <div className="message-label">{message.role === "user" ? "Profissional" : "Prato Clínico"}</div>
+                        <div className="message-content">{cleanAssistantText(message.content)}</div>
                         {message.role === "assistant" && message.judge && <JudgeBadge judge={message.judge} />}
                         {message.role === "assistant" && message.evidence && message.evidence.length > 0 && (
                           <button className="source-button" onClick={() => setSourcePanel(message.evidence || [])}>
@@ -548,8 +559,8 @@ export default function Page() {
 
                   {professionalMessages.map((message, index) => (
                     <article key={index} className={message.role === "user" ? "message user" : "message assistant"}>
-                      <div className="message-label">{message.role === "user" ? "Profissional" : "Nutri AI"}</div>
-                      <div className="message-content">{message.content}</div>
+                      <div className="message-label">{message.role === "user" ? "Profissional" : "Prato Clínico"}</div>
+                      <div className="message-content">{cleanAssistantText(message.content)}</div>
                       {message.role === "assistant" && message.judge && <JudgeBadge judge={message.judge} />}
                       {message.role === "assistant" && message.evidence && message.evidence.length > 0 && (
                         <button className="source-button" onClick={() => setSourcePanel(message.evidence || [])}>

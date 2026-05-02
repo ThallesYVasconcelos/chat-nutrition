@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Nutri AI Workspace",
-  description: "Plataforma profissional para nutricionistas com RAG clínico",
+  title: "Prato Clínico",
+  description: "Planejamento alimentar guiado por conversa clínica e evidências",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

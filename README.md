@@ -1,4 +1,4 @@
-# Nutri AI Workspace (Next.js + Supabase + Replicate)
+# Prato Clínico (Next.js + Supabase + Replicate)
 
 Aplicação profissional para nutricionistas com:
 

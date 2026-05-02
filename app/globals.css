@@ -22,7 +22,7 @@ body {
   min-height: 100%;
   background: var(--bg);
   color: var(--text);
-  font-family: ui-sans-serif, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-family: Aptos, "Source Sans 3", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
 }
 
 button,
@@ -62,6 +62,39 @@ button {
 .brand-mark {
   font-weight: 800;
   letter-spacing: 0;
+}
+
+.brand {
+  font-size: 0.98rem;
+}
+
+.profile-block {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  align-items: center;
+  gap: 11px;
+}
+
+.profile-photo,
+.profile-fallback {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.profile-photo {
+  object-fit: cover;
+}
+
+.profile-fallback {
+  display: grid;
+  place-items: center;
+  color: #174f40;
+  background: var(--accent-2);
+  font-weight: 800;
 }
 
 .side-head p,

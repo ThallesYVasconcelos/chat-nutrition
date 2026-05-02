@@ -6,6 +6,7 @@ export type AppUser = {
   id: string;
   email: string;
   full_name: string | null;
+  avatar_url: string | null;
 };
 
 export async function requireAppUser(): Promise<AppUser> {
@@ -20,6 +21,10 @@ export async function requireAppUser(): Promise<AppUser> {
   const fullName =
     (supabaseUser.user_metadata?.full_name as string | undefined) ||
     (supabaseUser.user_metadata?.name as string | undefined) ||
+    null;
+  const avatarUrl =
+    (supabaseUser.user_metadata?.avatar_url as string | undefined) ||
+    (supabaseUser.user_metadata?.picture as string | undefined) ||
     null;
 
   const normalizedEmail = supabaseUser.email.toLowerCase();
@@ -63,5 +68,5 @@ export async function requireAppUser(): Promise<AppUser> {
   );
 
   if (!rows[0]) throw new Error("UNAUTHORIZED");
-  return rows[0];
+  return { ...rows[0], avatar_url: avatarUrl };
 }
