@@ -5,3 +5,8 @@ __pycache__/
 .streamlit/secrets.toml
 data/reference_docs/*_files/
 data/reference_docs/* (1).pdf
+node_modules/
+.next/
+dist/
+
+.vercel

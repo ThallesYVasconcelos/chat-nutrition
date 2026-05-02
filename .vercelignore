@@ -1,0 +1,14 @@
+.git
+.deps
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+data
+docs
+scripts
+sql
+src
+app.py
+requirements.txt
+.streamlit

@@ -1,108 +1,67 @@
-# Nutrition Chatbot Base
+# Nutri AI Workspace (Next.js + Supabase + Replicate)
 
-Base em Python para um chatbot de nutricao com Streamlit, LangGraph, Postgres/pgvector e Supabase.
+Aplicação profissional para nutricionistas com:
 
-O objetivo desta base e evitar respostas apressadas: a orquestracao funciona em formato ping-pong, coletando uma informacao por vez, validando lacunas e so gerando um plano alimentar preliminar quando os dados essenciais estiverem completos.
+- login Google via Supabase Auth
+- pacientes como projetos
+- chat clínico por paciente
+- recomendações técnicas com RAG
+- evidências rastreáveis por trecho
 
-## Stack
+## Stack atual
 
-- Streamlit para a primeira interface.
-- LangGraph para a orquestracao conversacional.
-- Postgres com pgvector para busca semantica.
-- Supabase como Postgres gerenciado em producao e opcionalmente local.
-- LLM via Replicate, com `openai/gpt-4o-mini` como padrao.
-- Embeddings locais/open-source com `intfloat/multilingual-e5-small` como padrao.
+- `Next.js` (App Router)
+- `PostgreSQL/Supabase` com `pgvector`
+- `Replicate` para geração (`openai/gpt-4o-mini`) e embedding de consulta
+- legado em Python mantido para ingestão e manutenção de base documental
 
-## Estrutura
+## Estrutura principal
 
-```text
-nutrition-chatbot/
-  app.py
-  requirements.txt
-  .env.example
-  sql/001_supabase_pgvector.sql
-  sql/003_auth_and_chat_history.sql
-  scripts/ingest_documents.py
-  src/nutri_ai/
-    config.py
-    db.py
-    embeddings.py
-    graph.py
-    planner.py
-    schemas.py
+- `app/page.tsx`: interface principal
+- `app/api/*`: backend server-side para auth, pacientes, chats e RAG
+- `lib/db.ts`: conexão Postgres
+- `lib/supabase-server.ts`: validação de token Supabase
+- `lib/ai.ts`: retrieval + geração no Replicate
+
+## Variáveis de ambiente
+
+Use `.env.example` como base:
+
+- `APP_BASE_URL`
+- `SUPABASE_DB_URL_PRODUCTION`
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `REPLICATE_API_TOKEN`
+- `REPLICATE_CHAT_MODEL`
+- `REPLICATE_EMBEDDING_MODEL`
+- `REPLICATE_MAX_COMPLETION_TOKENS`
+- `NUTRI_DOC_MATCH_COUNT`
+- `NUTRI_DOC_MATCH_THRESHOLD`
+
+## Rodar local
+
+```bash
+npm install
+npm run dev
 ```
 
-## Setup rapido
+## Deploy no Vercel
 
-1. Crie e ative um ambiente virtual.
-2. Instale dependencias:
+1. Importar o repositório no Vercel
+2. Configurar todas as variáveis de ambiente do `.env.example`
+3. Definir `APP_BASE_URL` com a URL final do projeto (`https://seu-app.vercel.app`)
+4. Deploy
 
-```powershell
-pip install -r requirements.txt
-```
+## Migrações de banco já utilizadas
 
-3. Copie `.env.example` para `.env` e preencha as variaveis, incluindo `REPLICATE_API_TOKEN`.
-4. Rode o SQL em `sql/001_supabase_pgvector.sql` no Supabase SQL Editor ou no Postgres local com pgvector.
-5. Coloque PDFs, TXT, Markdown ou HTML em `data/reference_docs`.
-6. Ingestione os documentos:
+- `sql/001_supabase_pgvector.sql`
+- `sql/003_auth_and_chat_history.sql`
+- `sql/004_patients_documents_observations.sql`
+- `sql/005_supabase_google_auth.sql`
 
-```powershell
-python scripts/ingest_documents.py --source data/reference_docs
-```
+## Observação
 
-Arquivos duplicados com o mesmo hash sao pulados automaticamente na ingestao.
-
-7. Inicie:
-
-```powershell
-streamlit run app.py
-```
-
-## Ambientes local e producao
-
-Use `APP_ENV=local` para desenvolvimento e `APP_ENV=production` em producao.
-
-O app escolhe a conexao nesta ordem:
-
-- `SUPABASE_DB_URL_LOCAL`, quando `APP_ENV=local`.
-- `SUPABASE_DB_URL_PRODUCTION`, quando `APP_ENV=production`.
-- `DATABASE_URL`, como fallback universal.
-
-## Secrets do Streamlit
-
-Para rodar no Streamlit, copie `.streamlit/secrets.example.toml` para `.streamlit/secrets.toml` no ambiente local ou configure os mesmos nomes no painel de secrets do Streamlit Cloud.
-
-O app le primeiro `st.secrets` e usa `.env` como fallback para scripts locais, como ingestao e migracoes.
-
-Para login com Google via Supabase Auth, configure tambem:
-
-- `APP_BASE_URL`: URL publica do app no Streamlit, por exemplo `https://nutrifeliz.streamlit.app`.
-- `SUPABASE_URL`: URL do projeto Supabase, por exemplo `https://xxxx.supabase.co`.
-- `SUPABASE_ANON_KEY`: chave publishable/anon do projeto.
-
-No Supabase, habilite Authentication > Providers > Google. No Google Cloud, o redirect autorizado do cliente OAuth deve apontar para `https://<project-ref>.supabase.co/auth/v1/callback`; no Supabase, adicione a URL do Streamlit na lista de redirects permitidos.
-
-## Autenticacao e historico
-
-O app possui cadastro/login simples para nutricionistas com persistencia no Supabase:
-
-- `app_users`: contas dos profissionais.
-- `chat_threads`: conversas por usuario.
-- `chat_messages`: mensagens, respostas e evidencias usadas.
-- `patients`: cadastro de pacientes por profissional.
-- `patient_observations`: observacoes vinculadas ao paciente.
-- `patient_documents`: documentos gerados e arquivaveis por paciente.
-
-Rode `sql/003_auth_and_chat_history.sql` para habilitar essa camada em um banco existente.
-Rode `sql/004_patients_documents_observations.sql` para habilitar pacientes, observacoes e documentos.
-Rode `sql/005_supabase_google_auth.sql` para permitir contas criadas/vinculadas por Google OAuth.
-
-## LLM e embeddings
-
-O gerador do plano usa Replicate com `REPLICATE_CHAT_MODEL=openai/gpt-4o-mini`.
-
-Os embeddings rodam localmente com `LOCAL_EMBEDDING_MODEL=intfloat/multilingual-e5-small`, que gera vetores de 384 dimensoes. Por isso o SQL usa `vector(384)`.
-
-## Guardrails clinicos
-
-Esta base nao substitui nutricionista, medico ou conduta clinica. Para patologias, gestacao, lactacao, transtornos alimentares, insuficiencia renal, diabetes em uso de insulina, alergias graves, cirurgia bariatrica e outras situacoes de risco, o grafo marca a conversa como `requires_professional_review` e limita a resposta a orientacao educativa e encaminhamento.
+Os embeddings dos documentos já existentes no Supabase continuam válidos.  
+Não é necessário reprocessar a base documental para usar a interface Next.js.
