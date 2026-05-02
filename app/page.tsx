@@ -25,6 +25,19 @@ const STARTER_PROMPTS = [
   "Preciso organizar uma anamnese alimentar antes de propor o plano.",
   "Paciente com hipertensão: quais dados faltam antes do plano?",
 ];
+const PROFESSIONAL_TOPICS = [
+  "Patologias",
+  "Gestantes",
+  "Saúde da mulher",
+  "Saúde do idoso",
+  "Saúde da criança",
+  "TEA",
+  "Nutrição comportamental",
+  "Obesidade",
+  "Diabetes",
+  "Hipertensão",
+  "Doença celíaca",
+];
 
 function getSupabaseClient(): SupabaseClient | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -71,7 +84,7 @@ export default function Page() {
   const [appUser, setAppUser] = useState<AppUser | null>(null);
   const [authError, setAuthError] = useState("");
 
-  const [view, setView] = useState<"plan" | "clients">("plan");
+  const [view, setView] = useState<"plan" | "recommendations" | "clients">("plan");
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientId, setSelectedClientId] = useState("");
   const [clientTab, setClientTab] = useState<"chat" | "record" | "notes">("chat");
@@ -82,6 +95,10 @@ export default function Page() {
   const [chatInput, setChatInput] = useState("");
   const [sourcePanel, setSourcePanel] = useState<Evidence[] | null>(null);
   const [isSending, setIsSending] = useState(false);
+  const [professionalTopic, setProfessionalTopic] = useState("Patologias");
+  const [professionalInput, setProfessionalInput] = useState("");
+  const [professionalMessages, setProfessionalMessages] = useState<ChatMessage[]>([]);
+  const [isProfessionalSending, setIsProfessionalSending] = useState(false);
 
   const [newClient, setNewClient] = useState({
     fullName: "",
@@ -240,6 +257,28 @@ export default function Page() {
     }
   }
 
+  async function sendProfessionalQuestion(value?: string) {
+    const text = (value || professionalInput).trim();
+    if (!accessToken || !text || isProfessionalSending) return;
+
+    setIsProfessionalSending(true);
+    setProfessionalInput("");
+    setProfessionalMessages((prev) => [...prev, { role: "user", content: text }]);
+
+    try {
+      const data = await api<{ answer: string; evidence: Evidence[] }>("/api/recommendations", accessToken, {
+        method: "POST",
+        body: JSON.stringify({ topic: professionalTopic, question: text }),
+      });
+      setProfessionalMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: data.answer, evidence: data.evidence || [] },
+      ]);
+    } finally {
+      setIsProfessionalSending(false);
+    }
+  }
+
   if (!supabase) {
     return (
       <main className="setup-screen">
@@ -284,6 +323,12 @@ export default function Page() {
         <nav className="nav-list">
           <button className={view === "plan" ? "nav-item active" : "nav-item"} onClick={() => setView("plan")}>
             Plano alimentar guiado
+          </button>
+          <button
+            className={view === "recommendations" ? "nav-item active" : "nav-item"}
+            onClick={() => setView("recommendations")}
+          >
+            Recomendações profissionais
           </button>
           <button className={view === "clients" ? "nav-item active" : "nav-item"} onClick={() => setView("clients")}>
             Clientes
@@ -431,6 +476,92 @@ export default function Page() {
                 </aside>
               </div>
             )}
+          </section>
+        )}
+
+        {view === "recommendations" && (
+          <section className="recommendations-view">
+            <header className="page-header">
+              <div>
+                <p className="eyebrow">Apoio técnico</p>
+                <h1>Recomendações para profissionais</h1>
+                <p>
+                  Consulte a base documental para revisar condutas, critérios, alertas e pontos de atenção antes de atender ou orientar um cliente.
+                </p>
+              </div>
+            </header>
+
+            <div className="recommendation-shell">
+              <aside className="topic-panel">
+                <h2>Tema</h2>
+                <div className="topic-list">
+                  {PROFESSIONAL_TOPICS.map((topic) => (
+                    <button
+                      key={topic}
+                      className={professionalTopic === topic ? "topic-item active" : "topic-item"}
+                      onClick={() => setProfessionalTopic(topic)}
+                    >
+                      {topic}
+                    </button>
+                  ))}
+                </div>
+              </aside>
+
+              <div className="chat-main">
+                <div className="message-list">
+                  {professionalMessages.length === 0 && (
+                    <div className="empty-chat">
+                      <h2>Use como consulta rápida de apoio profissional.</h2>
+                      <p>
+                        Pergunte sobre patologias, gestantes, infância, nutrição comportamental ou critérios de avaliação. As fontes aparecem dentro da resposta.
+                      </p>
+                      <div className="starter-grid">
+                        <button onClick={() => sendProfessionalQuestion("Quais pontos devo revisar antes de orientar um paciente com diabetes tipo 2?")}>
+                          Diabetes tipo 2: pontos de atenção
+                        </button>
+                        <button onClick={() => sendProfessionalQuestion("Quais cuidados alimentares gerais são relevantes para hipertensão?")}>
+                          Hipertensão: cuidados gerais
+                        </button>
+                        <button onClick={() => sendProfessionalQuestion("Como estruturar orientação alimentar sem reforçar culpa alimentar?")}>
+                          Nutrição comportamental
+                        </button>
+                        <button onClick={() => sendProfessionalQuestion("Quais dados faltam antes de pensar em plano para gestante?")}>
+                          Gestantes: dados essenciais
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {professionalMessages.map((message, index) => (
+                    <article key={index} className={message.role === "user" ? "message user" : "message assistant"}>
+                      <div className="message-label">{message.role === "user" ? "Profissional" : "Nutri AI"}</div>
+                      <div className="message-content">{message.content}</div>
+                      {message.role === "assistant" && message.evidence && message.evidence.length > 0 && (
+                        <button className="source-button" onClick={() => setSourcePanel(message.evidence || [])}>
+                          Ver fontes usadas
+                        </button>
+                      )}
+                    </article>
+                  ))}
+                </div>
+
+                <div className="composer">
+                  <textarea
+                    value={professionalInput}
+                    onChange={(event) => setProfessionalInput(event.target.value)}
+                    placeholder={`Pergunte sobre ${professionalTopic.toLowerCase()}...`}
+                    onKeyDown={(event) => {
+                      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                        sendProfessionalQuestion().catch(() => void 0);
+                      }
+                    }}
+                  />
+                  <button onClick={() => sendProfessionalQuestion().catch(() => void 0)} disabled={isProfessionalSending}>
+                    {isProfessionalSending ? "Buscando..." : "Enviar"}
+                  </button>
+                </div>
+              </div>
+            </div>
           </section>
         )}
 

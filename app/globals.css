@@ -213,6 +213,49 @@ button {
   align-items: start;
 }
 
+.recommendation-shell {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.topic-panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 14px;
+  position: sticky;
+  top: 20px;
+}
+
+.topic-panel h2 {
+  margin: 0 0 12px;
+  font-size: 1rem;
+}
+
+.topic-list {
+  display: grid;
+  gap: 7px;
+}
+
+.topic-item {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--text);
+  border-radius: 8px;
+  padding: 9px 10px;
+  text-align: left;
+}
+
+.topic-item.active {
+  background: var(--accent-2);
+  border-color: #b7d9cc;
+  color: #174f40;
+  font-weight: 700;
+}
+
 .chat-main,
 .context-panel,
 .form-card,
@@ -564,7 +607,15 @@ button {
     grid-template-columns: 1fr;
   }
 
+  .recommendation-shell {
+    grid-template-columns: 1fr;
+  }
+
   .context-panel {
+    position: static;
+  }
+
+  .topic-panel {
     position: static;
   }
 }
