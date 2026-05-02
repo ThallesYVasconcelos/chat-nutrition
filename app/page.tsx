@@ -84,16 +84,39 @@ function getSupabaseClient(): SupabaseClient | null {
 
 function PandaLogo({ compact = false }: { compact?: boolean }) {
   return (
-    <div className={compact ? "panda-logo compact" : "panda-logo"} aria-hidden="true">
-      <span className="panda-ear left" />
-      <span className="panda-ear right" />
-      <span className="panda-leaf" />
-      <span className="panda-face">
-        <span className="panda-eye left" />
-        <span className="panda-eye right" />
-        <span className="panda-muzzle" />
-      </span>
-    </div>
+    <svg
+      className={compact ? "panda-logo compact" : "panda-logo"}
+      viewBox="0 0 96 96"
+      aria-hidden="true"
+      role="img"
+    >
+      <g className="panda-breathe">
+        <path className="panda-outline" d="M25 81c-7-6-9-17-5-28 3-9 2-18 8-26 5-7 12-11 20-11s15 4 20 11c6 8 5 17 8 26 4 11 2 22-5 28-6 5-14 4-23 4s-17 1-23-4Z" />
+        <circle className="panda-ear-svg" cx="30" cy="23" r="12" />
+        <circle className="panda-ear-svg" cx="66" cy="23" r="12" />
+        <path className="panda-head-svg" d="M22 43c0-18 11-30 26-30s26 12 26 30c0 14-10 24-26 24S22 57 22 43Z" />
+        <ellipse className="panda-eye-patch" cx="37" cy="41" rx="9" ry="12" transform="rotate(20 37 41)" />
+        <ellipse className="panda-eye-patch" cx="59" cy="41" rx="9" ry="12" transform="rotate(-20 59 41)" />
+        <circle className="panda-eye-dot" cx="39" cy="38" r="2.2" />
+        <circle className="panda-eye-dot" cx="57" cy="38" r="2.2" />
+        <circle className="panda-cheek-svg" cx="30" cy="51" r="4.5" />
+        <circle className="panda-cheek-svg" cx="66" cy="51" r="4.5" />
+        <path className="panda-nose-svg" d="M44 48c1-3 7-3 8 0 1 4-2 6-4 6s-5-2-4-6Z" />
+        <path className="panda-smile-svg" d="M42 55c2 4 10 4 12 0" />
+        <path className="panda-body-svg" d="M28 66c2-13 11-20 20-20s18 7 20 20c2 12-7 19-20 19s-22-7-20-19Z" />
+        <path className="panda-arm-svg left" d="M28 57c-8 2-12 10-10 17 2 5 9 4 13 0 4-5 5-14-3-17Z" />
+        <path className="panda-arm-svg right" d="M68 57c8 2 12 10 10 17-2 5-9 4-13 0-4-5-5-14 3-17Z" />
+        <ellipse className="panda-foot-svg" cx="32" cy="82" rx="11" ry="8" transform="rotate(-18 32 82)" />
+        <ellipse className="panda-foot-svg" cx="64" cy="82" rx="11" ry="8" transform="rotate(18 64 82)" />
+      </g>
+      <g className="panda-bamboo">
+        <path d="M31 68 52 43" />
+        <path d="M37 61 34 56" />
+        <path d="M44 53 40 49" />
+        <path className="bamboo-leaf" d="M51 43c8-6 15-4 18 1-6 5-13 6-18-1Z" />
+        <path className="bamboo-leaf" d="M47 48c-1-8 3-13 9-15 2 7-1 12-9 15Z" />
+      </g>
+    </svg>
   );
 }
 
