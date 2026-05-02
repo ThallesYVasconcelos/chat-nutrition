@@ -51,7 +51,20 @@ async function api<T>(path: string, token: string, init?: RequestInit): Promise<
   });
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || "request_failed");
+    let parsed: unknown = null;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = null;
+    }
+    const error = new Error(
+      typeof parsed === "object" && parsed && "error" in parsed
+        ? String((parsed as { error: string }).error)
+        : text || "request_failed"
+    ) as Error & { payload?: unknown; status?: number };
+    error.payload = parsed;
+    error.status = response.status;
+    throw error;
   }
   return (await response.json()) as T;
 }
@@ -61,6 +74,7 @@ export default function Page() {
   const [accessToken, setAccessToken] = useState<string>("");
   const [authEmail, setAuthEmail] = useState<string>("");
   const [appUser, setAppUser] = useState<AppUser | null>(null);
+  const [authError, setAuthError] = useState<string>("");
 
   const [view, setView] = useState<"recommendations" | "patients" | "documents" | "evidence">(
     "recommendations"
@@ -113,15 +127,30 @@ export default function Page() {
   }, [accessToken]);
 
   async function refreshBaseData(token: string) {
-    const [sync, p, t] = await Promise.all([
-      api<{ user: AppUser }>("/api/auth/sync", token),
-      api<{ patients: Patient[] }>("/api/patients", token),
-      api<{ threads: Thread[] }>("/api/threads", token),
-    ]);
-    setAppUser(sync.user);
-    setPatients(p.patients);
-    setGeneralThreads(t.threads);
-    if (!selectedPatientId && p.patients[0]) setSelectedPatientId(p.patients[0].id);
+    try {
+      const [sync, p, t] = await Promise.all([
+        api<{ user: AppUser }>("/api/auth/sync", token),
+        api<{ patients: Patient[] }>("/api/patients", token),
+        api<{ threads: Thread[] }>("/api/threads", token),
+      ]);
+      setAuthError("");
+      setAppUser(sync.user);
+      setPatients(p.patients);
+      setGeneralThreads(t.threads);
+      if (!selectedPatientId && p.patients[0]) setSelectedPatientId(p.patients[0].id);
+    } catch (error) {
+      const e = error as Error & { payload?: unknown; status?: number };
+      const debug =
+        typeof e.payload === "object" && e.payload && "debug" in e.payload
+          ? JSON.stringify((e.payload as { debug: unknown }).debug, null, 2)
+          : "";
+      setAuthError(
+        `Não foi possível concluir o acesso da conta.\nStatus: ${e.status || "?"}\nDetalhe: ${e.message}${
+          debug ? `\n\nDebug:\n${debug}` : ""
+        }`
+      );
+      setAppUser(null);
+    }
   }
 
   useEffect(() => {
@@ -146,6 +175,7 @@ export default function Page() {
 
   async function loginWithGoogle() {
     if (!supabase) return;
+    setAuthError("");
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo: window.location.origin },
@@ -239,15 +269,35 @@ export default function Page() {
 
   if (!accessToken || !appUser) {
     return (
-      <main className="main">
-        <div className="content-card" style={{ maxWidth: 520, margin: "80px auto" }}>
-          <h1 className="title">Nutri AI Workspace</h1>
-          <p className="muted">
-            Plataforma profissional para nutricionistas com chat clínico, pacientes e respostas baseadas em evidências.
-          </p>
-          <button className="primary" onClick={loginWithGoogle} style={{ marginTop: 8 }}>
-            Entrar com Google
-          </button>
+      <main className="auth-wrap">
+        <div className="auth-card">
+          <section className="auth-hero">
+            <div className="panda-logo" aria-hidden="true">
+              🐼
+            </div>
+            <span className="auth-chip">Nutrição baseada em evidências</span>
+            <h1 className="auth-title" style={{ marginTop: 14 }}>
+              Nutri AI Workspace
+            </h1>
+            <p style={{ marginTop: 12, lineHeight: 1.5 }}>
+              Plataforma clínica para nutricionistas com centralização de pacientes, registro de evolução e recomendações técnicas rastreáveis.
+            </p>
+          </section>
+          <section className="auth-panel">
+            <h2 style={{ margin: 0 }}>Acesso profissional</h2>
+            <p className="muted" style={{ margin: 0 }}>
+              Entre com Google para acessar seu workspace.
+            </p>
+            <div className="login-action">
+              <button className="auth-google-btn" onClick={loginWithGoogle}>
+                Entrar com Google
+              </button>
+              <span className="panda-wave" aria-hidden="true">
+                🐼
+              </span>
+            </div>
+            {authError && <div className="auth-alert">{authError}</div>}
+          </section>
         </div>
       </main>
     );
