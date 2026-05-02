@@ -1,0 +1,45 @@
+name: Cross Platform CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  next-build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    env:
+      APP_BASE_URL: http://localhost:3000
+      SUPABASE_DB_URL_PRODUCTION: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+      SUPABASE_URL: https://example.supabase.co
+      SUPABASE_ANON_KEY: sb_publishable_dummy_key
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: sb_publishable_dummy_key
+      REPLICATE_API_TOKEN: r8_dummy_token
+      REPLICATE_CHAT_MODEL: openai/gpt-4o-mini
+      REPLICATE_EMBEDDING_MODEL: beautyyuyanli/multilingual-e5-small
+      REPLICATE_MAX_COMPLETION_TOKENS: 4096
+      NUTRI_DOC_MATCH_COUNT: 6
+      NUTRI_DOC_MATCH_THRESHOLD: 0.68
+    steps:
+      - name: Checkout
+      uses: actions/checkout@v4
+
+      - name: Setup Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: "20"
+        cache: "npm"
+
+      - name: Install
+      run: npm ci
+
+      - name: Build
+      run: npm run build
