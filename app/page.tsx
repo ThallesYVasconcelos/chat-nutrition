@@ -91,8 +91,6 @@ function PandaLogo({ compact = false }: { compact?: boolean }) {
       <span className="panda-face">
         <span className="panda-eye left" />
         <span className="panda-eye right" />
-        <span className="panda-cheek left" />
-        <span className="panda-cheek right" />
         <span className="panda-nose" />
         <span className="panda-mouth" />
       </span>
