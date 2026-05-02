@@ -219,7 +219,6 @@ def create_chat_thread(
         conn.commit()
     return str(row["id"])
 
-
 def list_chat_threads(user_id: str, limit: int = 30) -> list[dict[str, Any]]:
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -551,3 +550,4 @@ def save_meal_plan(
             row = cur.fetchone()
         conn.commit()
     return str(row["id"])
+

@@ -1,7 +1,5 @@
 from typing import Any
 
-import os
-
 import replicate
 
 from nutri_ai.config import get_settings
@@ -131,16 +129,9 @@ def generate_meal_plan(profile: ClientProfile, evidence: list[EvidenceDocument])
             ),
         },
     ]
-    os.environ["REPLICATE_API_TOKEN"] = settings.replicate_api_token.strip()
-    output = replicate.run(
-        settings.replicate_chat_model,
-        input={
-            "messages": messages,
-            "temperature": 0.2,
-            "max_completion_tokens": settings.replicate_max_completion_tokens,
-        },
-    )
-    content = "".join(output) if isinstance(output, list) else str(output)
+    content = _run_replicate_chat(messages)
+    if not content:
+        return _fallback_plan(profile, evidence, risk_flags)
     return {
         "format": "draft_text",
         "provider": "replicate",
@@ -200,16 +191,18 @@ def generate_professional_recommendation(
             ),
         },
     ]
-    os.environ["REPLICATE_API_TOKEN"] = settings.replicate_api_token.strip()
-    output = replicate.run(
-        settings.replicate_chat_model,
-        input={
-            "messages": messages,
-            "temperature": 0.2,
-            "max_completion_tokens": settings.replicate_max_completion_tokens,
-        },
-    )
-    content = "".join(output) if isinstance(output, list) else str(output)
+    content = _run_replicate_chat(messages)
+    if not content:
+        return {
+            "format": "structured_fallback",
+            "topic": topic,
+            "question": question,
+            "answer": (
+                "A chamada da LLM falhou no momento. Use os trechos recuperados abaixo para orientar a decisao "
+                "e tente novamente em seguida."
+            ),
+            "evidence": evidence_payload,
+        }
     return {
         "format": "professional_recommendation",
         "provider": "replicate",
@@ -269,3 +262,34 @@ def _evidence_payload(index: int, doc: EvidenceDocument) -> dict[str, Any]:
         "similarity": doc.similarity,
         "excerpt": doc.body[:700],
     }
+
+
+def _run_replicate_chat(messages: list[dict[str, str]]) -> str:
+    settings = get_settings()
+    token = (settings.replicate_api_token or "").strip()
+    if not token:
+        return ""
+
+    try:
+        client = replicate.Client(api_token=token)
+        output = client.run(
+            settings.replicate_chat_model,
+            input={
+                "messages": messages,
+                "temperature": 0.2,
+                "max_completion_tokens": settings.replicate_max_completion_tokens,
+            },
+        )
+    except Exception:
+        return ""
+
+    if output is None:
+        return ""
+    if isinstance(output, str):
+        return output.strip()
+    if isinstance(output, list):
+        return "".join(str(part) for part in output).strip()
+    try:
+        return "".join(str(part) for part in output).strip()
+    except Exception:
+        return str(output).strip()
