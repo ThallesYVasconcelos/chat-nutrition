@@ -837,7 +837,8 @@ button {
 .dashboard-view,
 .patients-view,
 .recommendations-view,
-.planner-view {
+.planner-view,
+.sources-view {
   max-width: 1240px;
   margin: 0 auto;
 }
@@ -1217,6 +1218,48 @@ button {
   margin-top: 8px;
 }
 
+.source-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.source-tile {
+  border: 1px solid #dedede;
+  border-radius: 16px;
+  background: #fff;
+  padding: 18px;
+  box-shadow: var(--shadow-soft);
+}
+
+.source-tile span {
+  display: inline-flex;
+  border-radius: 999px;
+  background: #e6f4ee;
+  color: #0f5e48;
+  padding: 5px 9px;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.source-tile h2 {
+  margin: 14px 0 8px;
+  font-size: 1.05rem;
+  line-height: 1.25;
+}
+
+.source-tile p {
+  min-height: 64px;
+  margin: 0 0 14px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.source-tile small {
+  color: #0f3d31;
+  font-weight: 700;
+}
+
 .form-card,
 .client-record,
 .record-panel {
@@ -1554,7 +1597,8 @@ button {
   .starter-grid,
   .client-form,
   .details-grid,
-  .patient-grid {
+  .patient-grid,
+  .source-grid {
     grid-template-columns: 1fr;
   }
 

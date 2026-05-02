@@ -5,15 +5,18 @@ import { sql } from "@/lib/db";
 export async function GET() {
   try {
     await requireAppUser();
-    const rows = await sql<{ title: string }>(
+    const rows = await sql<{ title: string; source: string; chunks: string }>(
       `
-      select title
+      select
+        title,
+        coalesce(max(source), '') as source,
+        count(*)::text as chunks
       from public.nutrition_documents
       group by title
       order by title
       `
     );
-    return NextResponse.json({ documents: rows.map((row) => row.title) });
+    return NextResponse.json({ documents: rows });
   } catch {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }

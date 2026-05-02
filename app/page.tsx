@@ -31,6 +31,7 @@ type Client = {
 };
 type Observation = { id: string; category: string; note: string; created_at: string };
 type Thread = { id: string; title: string; updated_at: string };
+type ReferenceDocument = { title: string; source: string; chunks: string };
 type ClientFormValue = {
   fullName: string;
   birthDate: string;
@@ -373,7 +374,7 @@ export default function Page() {
   const [appUser, setAppUser] = useState<AppUser | null>(null);
   const [authError, setAuthError] = useState("");
 
-  const [view, setView] = useState<"dashboard" | "plan" | "recommendations" | "patients">("dashboard");
+  const [view, setView] = useState<"dashboard" | "plan" | "recommendations" | "patients" | "sources">("dashboard");
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientId, setSelectedClientId] = useState("");
   const [clientTab, setClientTab] = useState<"chat" | "record" | "notes">("chat");
@@ -390,6 +391,7 @@ export default function Page() {
   const [isProfessionalSending, setIsProfessionalSending] = useState(false);
   const [patientSearch, setPatientSearch] = useState("");
   const [showNewPatientModal, setShowNewPatientModal] = useState(false);
+  const [documents, setDocuments] = useState<ReferenceDocument[]>([]);
 
   const [newClient, setNewClient] = useState<ClientFormValue>(clientToFormValue(null));
   const [editClient, setEditClient] = useState<ClientFormValue>(clientToFormValue(null));
@@ -419,6 +421,13 @@ export default function Page() {
     if (!accessToken) return;
     refreshWorkspace(accessToken).catch(() => void 0);
   }, [accessToken]);
+
+  useEffect(() => {
+    if (!accessToken || view !== "sources") return;
+    api<{ documents: ReferenceDocument[] }>("/api/documents", accessToken)
+      .then((data) => setDocuments(data.documents))
+      .catch(() => setDocuments([]));
+  }, [accessToken, view]);
 
   useEffect(() => {
     if (!accessToken || !selectedClientId) return;
@@ -678,6 +687,9 @@ export default function Page() {
             onClick={() => setView("recommendations")}
           >
             Recomendações
+          </button>
+          <button className={view === "sources" ? "nav-item active" : "nav-item"} onClick={() => setView("sources")}>
+            Fontes
           </button>
         </nav>
 
@@ -1038,6 +1050,29 @@ export default function Page() {
             )}
           </section>
         )}
+
+        {view === "sources" && (
+          <section className="sources-view">
+            <header className="page-header">
+              <div>
+                <p className="eyebrow">Base documental</p>
+                <h1>Fontes usadas pelo sistema</h1>
+                <p>Estes documentos fundamentam as respostas do RAG. Os títulos foram organizados para leitura técnica, sem depender do nome dos arquivos.</p>
+              </div>
+            </header>
+
+            <div className="source-grid">
+              {documents.map((document) => (
+                <article key={document.title} className="source-tile">
+                  <span>{sourceCategory(document.title)}</span>
+                  <h2>{technicalTitle(document.title)}</h2>
+                  <p>{sourceDescription(document.title)}</p>
+                  <small>{Number(document.chunks || 0)} trechos indexados</small>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
       </main>
 
       {showNewPatientModal && (
@@ -1296,6 +1331,33 @@ function technicalTitle(title: string): string {
     protocolo_sisvan: "SISVAN: protocolos de vigilância alimentar e nutricional",
     PCDT_DoencaCeliaca: "PCDT: doença celíaca",
     "PCDT DM2_17.04.2024_MSM": "PCDT: diabetes mellitus tipo 2",
+    "PCDT Hipertensão Arterial Sistêmica": "PCDT: hipertensão arterial sistêmica",
+    "PCDT_Hipertensão_Arterial_Sistêmica": "PCDT: hipertensão arterial sistêmica",
+    PCDT_DM2_17_04_2024_MSM: "PCDT: diabetes mellitus tipo 2",
+    "Circunferência da Cintura - Obesidade no adulto": "Critério antropométrico: circunferência da cintura",
+    "Definição - Obesidade no adulto": "Definição clínica: obesidade no adulto",
+    "Índice de massa corporal (IMC) - Obesidade no adulto": "Critério antropométrico: índice de massa corporal",
+    creche_amamentacao_alimentacao_saudavel_livreto_gestores: "Alimentação saudável na creche e apoio à amamentação",
   };
   return titles[title] || titles[clean] || clean;
+}
+
+function sourceCategory(title: string): string {
+  const clean = technicalTitle(title).toLowerCase();
+  if (clean.includes("pcdt") || clean.includes("diabetes") || clean.includes("hipertensão") || clean.includes("doença celíaca")) return "Patologia";
+  if (clean.includes("criança") || clean.includes("creche") || clean.includes("amamentação")) return "Ciclo de vida";
+  if (clean.includes("imc") || clean.includes("cintura") || clean.includes("obesidade") || clean.includes("sisvan")) return "Avaliação nutricional";
+  return "Guia alimentar";
+}
+
+function sourceDescription(title: string): string {
+  const clean = technicalTitle(title).toLowerCase();
+  if (clean.includes("população brasileira")) return "Base para recomendações alimentares, escolhas in natura, ultraprocessados e orientação alimentar geral.";
+  if (clean.includes("crianças") || clean.includes("creche")) return "Referência para alimentação infantil, amamentação, introdução alimentar e cuidado em ambientes coletivos.";
+  if (clean.includes("sisvan")) return "Referência para vigilância alimentar, indicadores antropométricos e acompanhamento nutricional.";
+  if (clean.includes("diabetes")) return "Referência clínica para cuidados e alertas em diabetes mellitus tipo 2.";
+  if (clean.includes("hipertensão")) return "Referência clínica para cuidados e alertas em hipertensão arterial sistêmica.";
+  if (clean.includes("celíaca")) return "Referência clínica para doença celíaca e restrições alimentares associadas.";
+  if (clean.includes("obesidade") || clean.includes("imc") || clean.includes("cintura")) return "Referência para definição, classificação e medidas antropométricas relacionadas à obesidade.";
+  return "Documento indexado na base vetorial para apoiar respostas com trechos recuperáveis.";
 }
