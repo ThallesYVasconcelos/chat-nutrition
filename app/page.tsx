@@ -27,9 +27,18 @@ type Client = {
   email: string | null;
   objective: string | null;
   notes: string | null;
+  updated_at?: string;
 };
 type Observation = { id: string; category: string; note: string; created_at: string };
 type Thread = { id: string; title: string; updated_at: string };
+type ClientFormValue = {
+  fullName: string;
+  birthDate: string;
+  phone: string;
+  email: string;
+  objective: string;
+  notes: string;
+};
 
 const API_BASE = "";
 const STARTER_PROMPTS = [
@@ -61,6 +70,122 @@ function getSupabaseClient(): SupabaseClient | null {
 
 function cleanAssistantText(content: string): string {
   return content.replace(/\*\*(.*?)\*\*/g, "$1").trim();
+}
+
+function clientToFormValue(client: Client | null): ClientFormValue {
+  return {
+    fullName: client?.full_name || "",
+    birthDate: client?.birth_date || "",
+    phone: client?.phone || "",
+    email: client?.email || "",
+    objective: client?.objective || "",
+    notes: client?.notes || "",
+  };
+}
+
+function wrapPdfLine(text: string, width = 88): string[] {
+  const words = text.replace(/\s+/g, " ").trim().split(" ");
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    if (!word) continue;
+    const next = current ? `${current} ${word}` : word;
+    if (next.length > width && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = next;
+    }
+  }
+  if (current) lines.push(current);
+  return lines.length ? lines : [""];
+}
+
+function utf16Hex(text: string): string {
+  const bytes = [0xfe, 0xff];
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    bytes.push((code >> 8) & 0xff, code & 0xff);
+  }
+  return bytes.map((byte) => byte.toString(16).padStart(2, "0").toUpperCase()).join("");
+}
+
+function buildPdfBlob(lines: string[]): Blob {
+  const pageLines = 42;
+  const pages = Array.from({ length: Math.ceil(lines.length / pageLines) || 1 }, (_, index) =>
+    lines.slice(index * pageLines, index * pageLines + pageLines)
+  );
+  const objects: string[] = [];
+  const pageIds = pages.map((_, index) => 4 + index * 2);
+  const contentIds = pages.map((_, index) => 5 + index * 2);
+
+  objects[1] = "<< /Type /Catalog /Pages 2 0 R >>";
+  objects[2] = `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${pages.length} >>`;
+  objects[3] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>";
+
+  pages.forEach((page, index) => {
+    const pageId = pageIds[index];
+    const contentId = contentIds[index];
+    const content = [
+      "BT",
+      "/F1 11 Tf",
+      "50 790 Td",
+      "15 TL",
+      ...page.map((line) => `<${utf16Hex(line)}> Tj T*`),
+      "ET",
+    ].join("\n");
+    objects[pageId] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents ${contentId} 0 R >>`;
+    objects[contentId] = `<< /Length ${content.length} >>\nstream\n${content}\nendstream`;
+  });
+
+  let pdf = "%PDF-1.4\n";
+  const offsets = [0];
+  for (let index = 1; index < objects.length; index += 1) {
+    if (!objects[index]) continue;
+    offsets[index] = pdf.length;
+    pdf += `${index} 0 obj\n${objects[index]}\nendobj\n`;
+  }
+  const xrefOffset = pdf.length;
+  pdf += `xref\n0 ${objects.length}\n0000000000 65535 f \n`;
+  for (let index = 1; index < objects.length; index += 1) {
+    pdf += `${String(offsets[index] || 0).padStart(10, "0")} 00000 n \n`;
+  }
+  pdf += `trailer\n<< /Size ${objects.length} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+  return new Blob([pdf], { type: "application/pdf" });
+}
+
+function downloadMealPlanPdf(input: { patient: Client; content: string; evidence?: Evidence[] }) {
+  const date = new Date().toLocaleDateString("pt-BR");
+  const bodyLines = cleanAssistantText(input.content)
+    .split("\n")
+    .flatMap((line) => wrapPdfLine(line));
+  const evidenceLines = (input.evidence || []).flatMap((item) => [
+    `[${item.id}] ${technicalTitle(item.title)}`,
+    ...wrapPdfLine(item.excerpt, 88),
+    item.source ? `Fonte: ${item.source}` : "Fonte sem caminho registrado",
+    "",
+  ]);
+  const lines = [
+    "Prato Clínico - Plano alimentar aprovado",
+    `Cliente: ${input.patient.full_name}`,
+    `Objetivo: ${input.patient.objective || "não definido"}`,
+    `Data: ${date}`,
+    "",
+    "Plano alimentar",
+    "",
+    ...bodyLines,
+    "",
+    "Fontes e trechos usados",
+    "",
+    ...(evidenceLines.length ? evidenceLines : ["Nenhuma fonte vinculada a esta resposta."]),
+  ];
+  const blob = buildPdfBlob(lines);
+  const link = document.createElement("a");
+  const filename = `plano-alimentar-${input.patient.full_name.toLowerCase().replace(/[^a-z0-9]+/gi, "-")}.pdf`;
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(link.href);
 }
 
 async function api<T>(path: string, token: string, init?: RequestInit): Promise<T> {
@@ -117,7 +242,7 @@ export default function Page() {
   const [professionalMessages, setProfessionalMessages] = useState<ChatMessage[]>([]);
   const [isProfessionalSending, setIsProfessionalSending] = useState(false);
 
-  const [newClient, setNewClient] = useState({
+  const [newClient, setNewClient] = useState<ClientFormValue>({
     fullName: "",
     birthDate: "",
     phone: "",
@@ -125,6 +250,7 @@ export default function Page() {
     objective: "",
     notes: "",
   });
+  const [editClient, setEditClient] = useState<ClientFormValue>(clientToFormValue(null));
 
   const selectedClient = clients.find((client) => client.id === selectedClientId) || null;
 
@@ -158,6 +284,10 @@ export default function Page() {
       .catch(() => setMessages([]));
   }, [accessToken, threadId]);
 
+  useEffect(() => {
+    setEditClient(clientToFormValue(selectedClient));
+  }, [selectedClientId, selectedClient?.updated_at]);
+
   async function refreshWorkspace(token: string) {
     try {
       const [sync, clientData] = await Promise.all([
@@ -167,7 +297,9 @@ export default function Page() {
       setAuthError("");
       setAppUser(sync.user);
       setClients(clientData.patients);
-      if (!selectedClientId && clientData.patients[0]) {
+      if (selectedClientId && !clientData.patients.some((client) => client.id === selectedClientId)) {
+        setSelectedClientId(clientData.patients[0]?.id || "");
+      } else if (!selectedClientId && clientData.patients[0]) {
         setSelectedClientId(clientData.patients[0].id);
       }
     } catch (error) {
@@ -231,6 +363,32 @@ export default function Page() {
     setMessages([]);
     setClientTab("chat");
     setView("plan");
+  }
+
+  async function updateClient() {
+    if (!accessToken || !selectedClientId || !editClient.fullName.trim()) return;
+    await api(`/api/patients/${selectedClientId}`, accessToken, {
+      method: "PATCH",
+      body: JSON.stringify(editClient),
+    });
+    await refreshWorkspace(accessToken);
+    setClientTab("record");
+  }
+
+  async function deleteClient() {
+    if (!accessToken || !selectedClient) return;
+    const confirmed = window.confirm(`Excluir ${selectedClient.full_name} e as conversas vinculadas a este cliente?`);
+    if (!confirmed) return;
+    await api(`/api/patients/${selectedClient.id}`, accessToken, {
+      method: "DELETE",
+    });
+    setSelectedClientId("");
+    setThreadId("");
+    setMessages([]);
+    setObservations([]);
+    setThreads([]);
+    await refreshWorkspace(accessToken);
+    setView("clients");
   }
 
   async function addObservation() {
@@ -461,6 +619,20 @@ export default function Page() {
                             Ver fontes usadas
                           </button>
                         )}
+                        {message.role === "assistant" && selectedClient && (
+                          <button
+                            className="source-button approve"
+                            onClick={() =>
+                              downloadMealPlanPdf({
+                                patient: selectedClient,
+                                content: message.content,
+                                evidence: message.evidence || [],
+                              })
+                            }
+                          >
+                            Aprovar e baixar PDF
+                          </button>
+                        )}
                       </article>
                     ))}
                   </div>
@@ -632,7 +804,24 @@ export default function Page() {
 
                 {clientTab === "record" && (
                   <div className="record-panel">
-                    <ClientDetails client={selectedClient} />
+                    <div className="record-actions">
+                      <div>
+                        <h2>Dados do cliente</h2>
+                        <p>Edite as informações que orientam o chat ping-pong e os planos gerados.</p>
+                      </div>
+                      <button className="danger-action" onClick={() => deleteClient().catch(() => void 0)}>
+                        Excluir cliente
+                      </button>
+                    </div>
+                    <ClientForm value={editClient} onChange={setEditClient} />
+                    <div className="form-actions">
+                      <button className="primary-action" onClick={() => updateClient().catch(() => void 0)}>
+                        Salvar alterações
+                      </button>
+                      <button className="mini-action" onClick={() => setEditClient(clientToFormValue(selectedClient))}>
+                        Desfazer
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -729,22 +918,8 @@ function ClientForm({
   value,
   onChange,
 }: {
-  value: {
-    fullName: string;
-    birthDate: string;
-    phone: string;
-    email: string;
-    objective: string;
-    notes: string;
-  };
-  onChange: (value: {
-    fullName: string;
-    birthDate: string;
-    phone: string;
-    email: string;
-    objective: string;
-    notes: string;
-  }) => void;
+  value: ClientFormValue;
+  onChange: (value: ClientFormValue) => void;
 }) {
   return (
     <div className="client-form">

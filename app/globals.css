@@ -346,12 +346,19 @@ button {
 
 .source-button {
   margin-top: 8px;
+  margin-right: 8px;
   border: 1px solid #b7d9cc;
   background: var(--accent-2);
   color: #174f40;
   border-radius: 8px;
   padding: 7px 10px;
   font-size: 0.86rem;
+}
+
+.source-button.approve {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
 }
 
 .judge-badge {
@@ -486,6 +493,42 @@ button {
 .client-record,
 .record-panel {
   padding: 16px;
+}
+
+.record-actions,
+.form-actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.record-actions {
+  margin-bottom: 16px;
+}
+
+.record-actions h2 {
+  margin: 0 0 4px;
+  font-size: 1.05rem;
+}
+
+.record-actions p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.form-actions {
+  justify-content: flex-start;
+  margin-top: 14px;
+}
+
+.danger-action {
+  border: 1px solid #f0c8c8;
+  background: #fff7f5;
+  color: #8a1f1f;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-weight: 700;
 }
 
 .client-form,
@@ -700,6 +743,11 @@ button {
 
   .composer {
     grid-template-columns: 1fr;
+  }
+
+  .record-actions,
+  .form-actions {
+    display: grid;
   }
 
   .message-list {

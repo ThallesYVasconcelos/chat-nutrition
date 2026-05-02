@@ -75,3 +75,27 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     return NextResponse.json({ error: "request_failed" }, { status: 400 });
   }
 }
+
+export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const user = await requireAppUser();
+    const { id } = await params;
+    await sql(
+      `
+      delete from public.chat_threads
+      where patient_id = $1 and user_id = $2
+      `,
+      [id, user.id]
+    );
+    await sql(
+      `
+      delete from public.patients
+      where id = $1 and user_id = $2
+      `,
+      [id, user.id]
+    );
+    return NextResponse.json({ ok: true });
+  } catch {
+    return NextResponse.json({ error: "request_failed" }, { status: 400 });
+  }
+}
