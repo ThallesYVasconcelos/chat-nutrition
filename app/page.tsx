@@ -160,9 +160,16 @@ function clientToFormValue(client: Client | null): ClientFormValue {
 
 function calculateBmi(weightKg: string, heightCm: string): string {
   const weight = Number(weightKg.replace(",", "."));
-  const height = Number(heightCm.replace(",", ".")) / 100;
+  const rawHeight = Number(heightCm.replace(",", "."));
+  const height = rawHeight > 3 ? rawHeight / 100 : rawHeight;
   if (!weight || !height) return "";
   return (weight / (height * height)).toFixed(1).replace(".", ",");
+}
+
+function formatHeight(value: string): string {
+  const rawHeight = Number(value.replace(",", "."));
+  if (!rawHeight) return "";
+  return rawHeight > 3 ? `${String(rawHeight).replace(".", ",")} cm` : `${String(rawHeight).replace(".", ",")} m`;
 }
 
 function normalizeBirthDate(value: string): string {
@@ -175,7 +182,7 @@ function buildPatientPayload(value: ClientFormValue) {
   const clinicalRows = [
     ["Sexo", value.sex],
     ["Peso", value.weightKg ? `${value.weightKg} kg` : ""],
-    ["Altura", value.heightCm ? `${value.heightCm} cm` : ""],
+    ["Altura", value.heightCm ? formatHeight(value.heightCm) : ""],
     ["IMC calculado", bmi],
     ["Cintura", value.waistCm ? `${value.waistCm} cm` : ""],
     ["Quadril", value.hipCm ? `${value.hipCm} cm` : ""],
