@@ -91,8 +91,7 @@ function PandaLogo({ compact = false }: { compact?: boolean }) {
       <span className="panda-face">
         <span className="panda-eye left" />
         <span className="panda-eye right" />
-        <span className="panda-nose" />
-        <span className="panda-mouth" />
+        <span className="panda-muzzle" />
       </span>
     </div>
   );
@@ -829,6 +828,11 @@ export default function Page() {
             </header>
 
             <div className="recommendation-shell">
+              <section className="recommendation-chat-intro">
+                <p className="eyebrow">Chat de recomendações</p>
+                <h2>Faça uma pergunta técnica para começar</h2>
+                <p>Escolha um tema ao lado ou digite diretamente. A resposta vem com trechos rastreáveis das fontes.</p>
+              </section>
               <aside className="topic-panel">
                 <h2>Tema</h2>
                 <div className="topic-list">
