@@ -72,6 +72,15 @@ function cleanAssistantText(content: string): string {
   return content.replace(/\*\*(.*?)\*\*/g, "$1").trim();
 }
 
+function isConsolidatedMealPlan(content: string): boolean {
+  const clean = cleanAssistantText(content).toLowerCase();
+  const looksLikeQuestion = clean.endsWith("?") && clean.length < 220;
+  if (looksLikeQuestion) return false;
+  const hasPlanLanguage = /plano alimentar|estrutura alimentar|cardápio|refeiç|café da manhã|almoço|jantar|lista de compras/.test(clean);
+  const hasValidationLanguage = /validação profissional|substituiç|alertas|síntese do caso|orçamento/.test(clean);
+  return hasPlanLanguage && hasValidationLanguage;
+}
+
 function clientToFormValue(client: Client | null): ClientFormValue {
   return {
     fullName: client?.full_name || "",
@@ -619,7 +628,7 @@ export default function Page() {
                             Ver fontes usadas
                           </button>
                         )}
-                        {message.role === "assistant" && selectedClient && (
+                        {message.role === "assistant" && selectedClient && isConsolidatedMealPlan(message.content) && (
                           <button
                             className="source-button approve"
                             onClick={() =>
@@ -898,7 +907,8 @@ function EmptyClientState({ onCreate }: { onCreate: () => void }) {
 }
 
 function JudgeBadge({ judge }: { judge: ResponseJudge }) {
-  const score = Math.round(judge.score * 100);
+  const normalizedScore = judge.score > 1 && judge.score <= 10 ? judge.score / 10 : judge.score > 10 ? judge.score / 100 : judge.score;
+  const score = Math.round(Math.max(0, Math.min(1, normalizedScore)) * 100);
   return (
     <div className={judge.passed ? "judge-badge passed" : "judge-badge warning"}>
       <strong>{judge.passed ? "Resposta completa" : "Revisar resposta"} · {score}%</strong>

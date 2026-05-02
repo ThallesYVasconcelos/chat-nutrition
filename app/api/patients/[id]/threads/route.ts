@@ -9,6 +9,18 @@ const messageSchema = z.object({
   threadId: z.string().optional().nullable(),
 });
 
+type MessageRow = {
+  role: string;
+  content: string;
+};
+
+function formatHistory(messages: MessageRow[]): string {
+  return messages
+    .map((message) => `${message.role === "assistant" ? "Assistente" : "Profissional"}: ${message.content}`)
+    .join("\n")
+    .slice(-6000);
+}
+
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireAppUser();
@@ -66,7 +78,30 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       [threadId, user.id, payload.message.trim()]
     );
 
-    const evidence = await searchEvidence(payload.message);
+    const recentMessages = await sql<MessageRow>(
+      `
+      select role, content
+      from (
+        select role, content, created_at
+        from public.chat_messages
+        where thread_id = $1 and user_id = $2
+        order by created_at desc
+        limit 14
+      ) recent
+      order by created_at
+      `,
+      [threadId, user.id]
+    );
+    const conversationHistory = formatHistory(recentMessages);
+    const evidenceQuery = [
+      patient?.objective || "",
+      patient?.notes || "",
+      conversationHistory,
+      payload.message,
+    ]
+      .join("\n")
+      .slice(-3500);
+    const evidence = await searchEvidence(evidenceQuery);
     const evidencePayload = evidence.slice(0, 6).map((item, index) => ({
       id: `F${index + 1}`,
       title: item.title,
@@ -79,12 +114,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       clientObjective: patient?.objective,
       clientNotes: patient?.notes,
       message: payload.message,
+      conversationHistory,
       evidence,
     });
     const judge = await judgeResponse({
       mode: "meal_plan",
       userMessage: payload.message,
       answer,
+      conversationHistory,
       evidence,
     });
 
