@@ -427,8 +427,7 @@ export default function Page() {
 
   useEffect(() => {
     if (!accessToken || !threadId) return;
-    api<{ messages: ChatMessage[] }>(`/api/threads/${threadId}/messages`, accessToken)
-      .then((data) => setMessages(data.messages))
+    loadThreadMessages(threadId)
       .catch(() => setMessages([]));
   }, [accessToken, threadId]);
 
@@ -465,7 +464,13 @@ export default function Page() {
     }
   }
 
-  async function loadClientContext(clientId: string) {
+  async function loadThreadMessages(nextThreadId: string) {
+    if (!accessToken || !nextThreadId) return;
+    const data = await api<{ messages: ChatMessage[] }>(`/api/threads/${nextThreadId}/messages`, accessToken);
+    setMessages(data.messages);
+  }
+
+  async function loadClientContext(clientId: string, preferFirstThread = false) {
     if (!accessToken) return;
     const [obs, threadData] = await Promise.all([
       api<{ observations: Observation[] }>(`/api/patients/${clientId}/observations`, accessToken),
@@ -473,11 +478,24 @@ export default function Page() {
     ]);
     setObservations(obs.observations);
     setThreads(threadData.threads);
-    if (!threadId && threadData.threads[0]) {
-      setThreadId(threadData.threads[0].id);
+    const currentBelongsToClient = threadData.threads.some((thread) => thread.id === threadId);
+    const nextThreadId = preferFirstThread || !threadId || !currentBelongsToClient ? threadData.threads[0]?.id || "" : threadId;
+    setThreadId(nextThreadId);
+    if (nextThreadId) {
+      await loadThreadMessages(nextThreadId);
     }
-    if (!threadData.threads[0]) {
+    if (!nextThreadId) {
       setMessages([]);
+    }
+  }
+
+  async function openPatientChat(clientId: string) {
+    setSelectedClientId(clientId);
+    setThreadId("");
+    setMessages([]);
+    setView("plan");
+    if (accessToken) {
+      await loadClientContext(clientId, true);
     }
   }
 
@@ -701,12 +719,7 @@ export default function Page() {
                   <button
                     key={client.id}
                     className="recent-row"
-                    onClick={() => {
-                      setSelectedClientId(client.id);
-                      setThreadId("");
-                      setMessages([]);
-                      setView("plan");
-                    }}
+                    onClick={() => openPatientChat(client.id).catch(() => void 0)}
                   >
                     <span className="avatar-dot">{client.full_name.slice(0, 1).toUpperCase()}</span>
                     <span>
@@ -787,6 +800,9 @@ export default function Page() {
                         <div className="message-label">{message.role === "user" ? "Profissional" : "Prato Clínico"}</div>
                         <div className="message-content">{cleanAssistantText(message.content)}</div>
                         {message.role === "assistant" && message.judge && <JudgeBadge judge={message.judge} />}
+                        {message.role === "assistant" && message.evidence && message.evidence.length > 0 && (
+                          <EvidencePreview evidence={message.evidence} />
+                        )}
                         {message.role === "assistant" && message.evidence && message.evidence.length > 0 && (
                           <button className="source-button" onClick={() => setSourcePanel(message.evidence || [])}>
                             Ver fontes usadas
@@ -906,6 +922,9 @@ export default function Page() {
                       <div className="message-content">{cleanAssistantText(message.content)}</div>
                       {message.role === "assistant" && message.judge && <JudgeBadge judge={message.judge} />}
                       {message.role === "assistant" && message.evidence && message.evidence.length > 0 && (
+                        <EvidencePreview evidence={message.evidence} />
+                      )}
+                      {message.role === "assistant" && message.evidence && message.evidence.length > 0 && (
                         <button className="source-button" onClick={() => setSourcePanel(message.evidence || [])}>
                           Ver fontes usadas
                         </button>
@@ -986,12 +1005,7 @@ export default function Page() {
                     </button>
                     <button
                       className="primary-action"
-                      onClick={() => {
-                        setSelectedClientId(client.id);
-                        setThreadId("");
-                        setMessages([]);
-                        setView("plan");
-                      }}
+                      onClick={() => openPatientChat(client.id).catch(() => void 0)}
                     >
                       Chat
                     </button>
@@ -1121,6 +1135,22 @@ function TypingIndicator({ label }: { label: string }) {
         <span />
       </div>
     </article>
+  );
+}
+
+function EvidencePreview({ evidence }: { evidence: Evidence[] }) {
+  return (
+    <div className="evidence-preview">
+      <strong>Trechos usados</strong>
+      {evidence.slice(0, 2).map((item) => (
+        <div key={`${item.id}-${item.title}`} className="evidence-preview-item">
+          <span>
+            [{item.id}] {technicalTitle(item.title)}
+          </span>
+          <p>{item.excerpt}</p>
+        </div>
+      ))}
+    </div>
   );
 }
 

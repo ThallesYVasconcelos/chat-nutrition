@@ -8,7 +8,12 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
     const { id } = await params;
     const messages = await sql(
       `
-      select role, content, created_at::text as created_at, evidence
+      select
+        role,
+        content,
+        created_at::text as created_at,
+        coalesce(evidence, '[]'::jsonb) as evidence,
+        metadata -> 'judge' as judge
       from public.chat_messages
       where thread_id = $1 and user_id = $2
       order by created_at

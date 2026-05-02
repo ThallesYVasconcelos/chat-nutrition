@@ -971,6 +971,38 @@ button {
   opacity: 0.88;
 }
 
+.evidence-preview {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+  border: 1px solid #dbe6dd;
+  border-radius: 12px;
+  background: #f7fbf8;
+  padding: 10px;
+  font-size: 0.86rem;
+}
+
+.evidence-preview > strong {
+  color: #0f5e48;
+}
+
+.evidence-preview-item {
+  border-top: 1px solid #dbe6dd;
+  padding-top: 8px;
+}
+
+.evidence-preview-item span {
+  display: block;
+  color: #0f3d31;
+  font-weight: 700;
+}
+
+.evidence-preview-item p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
 .composer {
   border-top: 1px solid var(--line);
   padding: 13px;
