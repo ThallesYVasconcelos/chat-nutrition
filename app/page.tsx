@@ -796,6 +796,7 @@ export default function Page() {
                         )}
                       </article>
                     ))}
+                    {isSending && <TypingIndicator label="Prato Clínico está analisando o caso" />}
                   </div>
 
                   <div className="composer">
@@ -899,6 +900,7 @@ export default function Page() {
                       )}
                     </article>
                   ))}
+                  {isProfessionalSending && <TypingIndicator label="Prato Clínico está consultando as fontes" />}
                 </div>
 
                 <div className="composer">
@@ -1094,6 +1096,19 @@ function JudgeBadge({ judge }: { judge: ResponseJudge }) {
         </span>
       )}
     </div>
+  );
+}
+
+function TypingIndicator({ label }: { label: string }) {
+  return (
+    <article className="message assistant typing-message">
+      <div className="message-label">{label}</div>
+      <div className="message-content typing-content">
+        <span />
+        <span />
+        <span />
+      </div>
+    </article>
   );
 }
 
