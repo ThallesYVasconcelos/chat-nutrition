@@ -10,6 +10,14 @@ export type EvidenceDoc = {
   similarity: number | null;
 };
 
+export type ResponseJudge = {
+  passed: boolean;
+  score: number;
+  issues: string[];
+  missing: string[];
+  recommendation: string;
+};
+
 let client: Replicate | null = null;
 
 function getReplicateClient(): Replicate {
@@ -26,6 +34,24 @@ function normalizeTextOutput(output: unknown): string {
   if (Array.isArray(output)) return output.map((part) => String(part)).join("").trim();
   if (typeof output === "object") return JSON.stringify(output);
   return String(output);
+}
+
+function safeParseJudge(text: string): ResponseJudge | null {
+  try {
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start < 0 || end < start) return null;
+    const parsed = JSON.parse(text.slice(start, end + 1)) as Partial<ResponseJudge>;
+    return {
+      passed: Boolean(parsed.passed),
+      score: Number(parsed.score || 0),
+      issues: Array.isArray(parsed.issues) ? parsed.issues.map(String) : [],
+      missing: Array.isArray(parsed.missing) ? parsed.missing.map(String) : [],
+      recommendation: String(parsed.recommendation || ""),
+    };
+  } catch {
+    return null;
+  }
 }
 
 type ReplicateModelRef = `${string}/${string}` | `${string}/${string}:${string}`;
@@ -183,4 +209,68 @@ export async function generateMealPlanGuidance(input: {
   }
 
   return "Não consegui consultar a LLM agora. Continue a coleta com: idade, sexo, altura, peso, objetivo, rotina, orçamento, restrições, alergias, patologias e medicamentos.";
+}
+
+export async function judgeResponse(input: {
+  mode: "meal_plan" | "professional_recommendation";
+  userMessage: string;
+  answer: string;
+  evidence: EvidenceDoc[];
+}): Promise<ResponseJudge> {
+  const evidenceIds = input.evidence.slice(0, 6).map((_, index) => `[F${index + 1}]`).join(", ");
+  const rubric =
+    input.mode === "meal_plan"
+      ? "Avalie se a resposta apoia a construção de plano alimentar em ping-pong: pergunta uma coisa por vez quando faltam dados essenciais, não fecha plano sem contexto suficiente, considera segurança clínica, orçamento, rotina, restrições, alergias, patologias, medicamentos e cita fontes quando usa evidência."
+      : "Avalie se a resposta profissional está completa: responde a pergunta, cita fontes quando usa evidência, aponta limites/lacunas, não inventa condutas e mantém segurança clínica.";
+
+  const messages = [
+    {
+      role: "system",
+      content:
+        "Você é um avaliador de qualidade para respostas de IA em nutrição. Responda somente JSON válido, sem markdown.",
+    },
+    {
+      role: "user",
+      content: `${rubric}\n\nPergunta/mensagem do usuário:\n${input.userMessage}\n\nResposta da IA:\n${input.answer}\n\nFontes disponíveis: ${
+        evidenceIds || "nenhuma"
+      }\n\nRetorne JSON neste formato exato:\n{\"passed\":boolean,\"score\":number,\"issues\":[string],\"missing\":[string],\"recommendation\":string}`,
+    },
+  ];
+
+  try {
+    const output = await getReplicateClient().run(env.replicateChatModel as ReplicateModelRef, {
+      input: {
+        messages,
+        temperature: 0,
+        max_completion_tokens: 900,
+      },
+    });
+    const parsed = safeParseJudge(normalizeTextOutput(output));
+    if (parsed) return parsed;
+  } catch {
+    // fallback below
+  }
+
+  const issues: string[] = [];
+  const missing: string[] = [];
+  if (input.evidence.length > 0 && !/\[F\d+\]/.test(input.answer)) {
+    issues.push("A resposta não citou as fontes recuperadas.");
+    missing.push("citações [F1], [F2]");
+  }
+  if (input.mode === "meal_plan" && /plano alimentar|cardápio|refeições/i.test(input.answer)) {
+    const essential = ["idade", "altura", "peso", "rotina", "orçamento"];
+    for (const item of essential) {
+      if (!new RegExp(item, "i").test(input.userMessage + input.answer)) missing.push(item);
+    }
+  }
+  return {
+    passed: issues.length === 0 && missing.length === 0,
+    score: issues.length === 0 && missing.length === 0 ? 0.82 : 0.55,
+    issues,
+    missing: Array.from(new Set(missing)),
+    recommendation:
+      issues.length || missing.length
+        ? "Revise a resposta antes de usar e peça os dados ausentes."
+        : "Resposta adequada para revisão profissional.",
+  };
 }

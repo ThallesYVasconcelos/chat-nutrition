@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAppUser } from "@/lib/api-auth";
 import { sql } from "@/lib/db";
-import { generateMealPlanGuidance, searchEvidence } from "@/lib/ai";
+import { generateMealPlanGuidance, judgeResponse, searchEvidence } from "@/lib/ai";
 
 const messageSchema = z.object({
   message: z.string().min(2),
@@ -81,17 +81,24 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       message: payload.message,
       evidence,
     });
+    const judge = await judgeResponse({
+      mode: "meal_plan",
+      userMessage: payload.message,
+      answer,
+      evidence,
+    });
 
     await sql(
       `
       insert into public.chat_messages (thread_id, user_id, role, content, evidence, metadata)
-      values ($1, $2, 'assistant', $3, $4::jsonb, '{"kind":"patient_chat_response"}'::jsonb)
+      values ($1, $2, 'assistant', $3, $4::jsonb, $5::jsonb)
       `,
       [
         threadId,
         user.id,
         answer,
         JSON.stringify(evidencePayload),
+        JSON.stringify({ kind: "patient_chat_response", judge }),
       ]
     );
 
@@ -111,7 +118,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       ]
     );
 
-    return NextResponse.json({ threadId, answer, evidence: evidencePayload });
+    return NextResponse.json({ threadId, answer, evidence: evidencePayload, judge });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: "invalid_payload", details: error.issues }, { status: 400 });

@@ -321,6 +321,32 @@ button {
   font-size: 0.86rem;
 }
 
+.judge-badge {
+  margin-top: 8px;
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: grid;
+  gap: 3px;
+  font-size: 0.84rem;
+}
+
+.judge-badge.passed {
+  border: 1px solid #b7d9cc;
+  background: #eef8f3;
+  color: #174f40;
+}
+
+.judge-badge.warning {
+  border: 1px solid #efd4a6;
+  background: #fff8e9;
+  color: #6f4a0e;
+}
+
+.judge-badge span {
+  color: inherit;
+  opacity: 0.88;
+}
+
 .composer {
   border-top: 1px solid var(--line);
   padding: 12px;

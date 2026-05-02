@@ -5,7 +5,20 @@ import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 type AppUser = { id: string; email: string; full_name: string | null };
 type Evidence = { id: string; title: string; source: string; excerpt: string; similarity?: number | null };
-type ChatMessage = { role: "user" | "assistant"; content: string; created_at?: string; evidence?: Evidence[] };
+type ResponseJudge = {
+  passed: boolean;
+  score: number;
+  issues: string[];
+  missing: string[];
+  recommendation: string;
+};
+type ChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+  created_at?: string;
+  evidence?: Evidence[];
+  judge?: ResponseJudge;
+};
 type Client = {
   id: string;
   full_name: string;
@@ -238,7 +251,7 @@ export default function Page() {
     setMessages((prev) => [...prev, { role: "user", content: text }]);
 
     try {
-      const data = await api<{ threadId: string; answer: string; evidence?: Evidence[] }>(
+      const data = await api<{ threadId: string; answer: string; evidence?: Evidence[]; judge?: ResponseJudge }>(
         `/api/patients/${selectedClientId}/threads`,
         accessToken,
         {
@@ -249,7 +262,7 @@ export default function Page() {
       setThreadId(data.threadId);
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: data.answer, evidence: data.evidence || [] },
+        { role: "assistant", content: data.answer, evidence: data.evidence || [], judge: data.judge },
       ]);
       await loadClientContext(selectedClientId);
     } finally {
@@ -266,13 +279,13 @@ export default function Page() {
     setProfessionalMessages((prev) => [...prev, { role: "user", content: text }]);
 
     try {
-      const data = await api<{ answer: string; evidence: Evidence[] }>("/api/recommendations", accessToken, {
+      const data = await api<{ answer: string; evidence: Evidence[]; judge?: ResponseJudge }>("/api/recommendations", accessToken, {
         method: "POST",
         body: JSON.stringify({ topic: professionalTopic, question: text }),
       });
       setProfessionalMessages((prev) => [
         ...prev,
-        { role: "assistant", content: data.answer, evidence: data.evidence || [] },
+        { role: "assistant", content: data.answer, evidence: data.evidence || [], judge: data.judge },
       ]);
     } finally {
       setIsProfessionalSending(false);
@@ -431,6 +444,7 @@ export default function Page() {
                       <article key={index} className={message.role === "user" ? "message user" : "message assistant"}>
                         <div className="message-label">{message.role === "user" ? "Profissional" : "Nutri AI"}</div>
                         <div className="message-content">{message.content}</div>
+                        {message.role === "assistant" && message.judge && <JudgeBadge judge={message.judge} />}
                         {message.role === "assistant" && message.evidence && message.evidence.length > 0 && (
                           <button className="source-button" onClick={() => setSourcePanel(message.evidence || [])}>
                             Ver fontes usadas
@@ -536,6 +550,7 @@ export default function Page() {
                     <article key={index} className={message.role === "user" ? "message user" : "message assistant"}>
                       <div className="message-label">{message.role === "user" ? "Profissional" : "Nutri AI"}</div>
                       <div className="message-content">{message.content}</div>
+                      {message.role === "assistant" && message.judge && <JudgeBadge judge={message.judge} />}
                       {message.role === "assistant" && message.evidence && message.evidence.length > 0 && (
                         <button className="source-button" onClick={() => setSourcePanel(message.evidence || [])}>
                           Ver fontes usadas
@@ -678,6 +693,23 @@ function EmptyClientState({ onCreate }: { onCreate: () => void }) {
       <button className="primary-action" onClick={onCreate}>
         Cadastrar cliente
       </button>
+    </div>
+  );
+}
+
+function JudgeBadge({ judge }: { judge: ResponseJudge }) {
+  const score = Math.round(judge.score * 100);
+  return (
+    <div className={judge.passed ? "judge-badge passed" : "judge-badge warning"}>
+      <strong>{judge.passed ? "Resposta completa" : "Revisar resposta"} · {score}%</strong>
+      {!judge.passed && (
+        <span>
+          {[...judge.issues, ...judge.missing.map((item) => `Falta: ${item}`)]
+            .filter(Boolean)
+            .slice(0, 3)
+            .join(" · ") || judge.recommendation}
+        </span>
+      )}
     </div>
   );
 }
