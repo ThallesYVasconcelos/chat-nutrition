@@ -817,22 +817,7 @@ export default function Page() {
 
         {view === "recommendations" && (
           <section className="recommendations-view">
-            <header className="page-header">
-              <div>
-                <p className="eyebrow">Apoio técnico</p>
-                <h1>Recomendações para profissionais</h1>
-                <p>
-                  Consulte a base documental para revisar condutas, critérios, alertas e pontos de atenção antes de atender ou orientar um cliente.
-                </p>
-              </div>
-            </header>
-
             <div className="recommendation-shell">
-              <section className="recommendation-chat-intro">
-                <p className="eyebrow">Chat de recomendações</p>
-                <h2>Faça uma pergunta técnica para começar</h2>
-                <p>Escolha um tema ao lado ou digite diretamente. A resposta vem com trechos rastreáveis das fontes.</p>
-              </section>
               <aside className="topic-panel">
                 <h2>Tema</h2>
                 <div className="topic-list">

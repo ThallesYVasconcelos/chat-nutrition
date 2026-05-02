@@ -641,6 +641,15 @@ button {
   line-height: 1.45;
 }
 
+.recommendations-view .chat-main {
+  min-height: calc(100vh - 122px);
+}
+
+.recommendations-view .message-list {
+  min-height: calc(100vh - 220px);
+  max-height: calc(100vh - 220px);
+}
+
 .topic-panel {
   background: var(--surface);
   border: 1px solid var(--line);
