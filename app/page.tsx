@@ -4,7 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 type AppUser = { id: string; email: string; full_name: string | null };
-type Patient = {
+type Evidence = { id: string; title: string; source: string; excerpt: string; similarity?: number | null };
+type ChatMessage = { role: "user" | "assistant"; content: string; created_at?: string; evidence?: Evidence[] };
+type Client = {
   id: string;
   full_name: string;
   birth_date: string | null;
@@ -14,24 +16,15 @@ type Patient = {
   notes: string | null;
 };
 type Observation = { id: string; category: string; note: string; created_at: string };
-type Thread = { id: string; title: string; mode?: string; updated_at: string };
-type ChatMessage = { role: "user" | "assistant"; content: string; created_at?: string };
-
-const TOPICS = [
-  "Patologias",
-  "Gestantes",
-  "Saúde da mulher",
-  "Saúde do idoso",
-  "Saúde da criança",
-  "TEA",
-  "Nutrição comportamental",
-  "Obesidade",
-  "Diabetes",
-  "Hipertensão",
-  "Doença celíaca",
-];
+type Thread = { id: string; title: string; updated_at: string };
 
 const API_BASE = "";
+const STARTER_PROMPTS = [
+  "Quero montar um plano alimentar para emagrecimento com orçamento baixo.",
+  "Paciente com rotina corrida, poucas refeições e objetivo de ganho de massa.",
+  "Preciso organizar uma anamnese alimentar antes de propor o plano.",
+  "Paciente com hipertensão: quais dados faltam antes do plano?",
+];
 
 function getSupabaseClient(): SupabaseClient | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -49,6 +42,7 @@ async function api<T>(path: string, token: string, init?: RequestInit): Promise<
       ...(init?.headers || {}),
     },
   });
+
   if (!response.ok) {
     const text = await response.text();
     let parsed: unknown = null;
@@ -66,37 +60,30 @@ async function api<T>(path: string, token: string, init?: RequestInit): Promise<
     error.status = response.status;
     throw error;
   }
+
   return (await response.json()) as T;
 }
 
 export default function Page() {
   const supabase = useMemo(getSupabaseClient, []);
-  const [accessToken, setAccessToken] = useState<string>("");
-  const [authEmail, setAuthEmail] = useState<string>("");
+  const [accessToken, setAccessToken] = useState("");
+  const [authEmail, setAuthEmail] = useState("");
   const [appUser, setAppUser] = useState<AppUser | null>(null);
-  const [authError, setAuthError] = useState<string>("");
+  const [authError, setAuthError] = useState("");
 
-  const [view, setView] = useState<"recommendations" | "patients" | "documents" | "evidence">(
-    "recommendations"
-  );
-  const [topic, setTopic] = useState("Patologias");
-  const [question, setQuestion] = useState("");
+  const [view, setView] = useState<"plan" | "clients">("plan");
+  const [clients, setClients] = useState<Client[]>([]);
+  const [selectedClientId, setSelectedClientId] = useState("");
+  const [clientTab, setClientTab] = useState<"chat" | "record" | "notes">("chat");
+  const [observations, setObservations] = useState<Observation[]>([]);
+  const [threads, setThreads] = useState<Thread[]>([]);
+  const [threadId, setThreadId] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [generalThreads, setGeneralThreads] = useState<Thread[]>([]);
-  const [documents, setDocuments] = useState<string[]>([]);
-  const [lastEvidence, setLastEvidence] = useState<{ id: string; title: string; source: string; excerpt: string }[]>(
-    []
-  );
+  const [chatInput, setChatInput] = useState("");
+  const [sourcePanel, setSourcePanel] = useState<Evidence[] | null>(null);
+  const [isSending, setIsSending] = useState(false);
 
-  const [patients, setPatients] = useState<Patient[]>([]);
-  const [selectedPatientId, setSelectedPatientId] = useState<string>("");
-  const [patientTab, setPatientTab] = useState<"record" | "observations" | "chat">("chat");
-  const [patientObservations, setPatientObservations] = useState<Observation[]>([]);
-  const [patientThreads, setPatientThreads] = useState<Thread[]>([]);
-  const [patientMessages, setPatientMessages] = useState<ChatMessage[]>([]);
-  const [patientThreadId, setPatientThreadId] = useState<string>("");
-
-  const [newPatient, setNewPatient] = useState({
+  const [newClient, setNewClient] = useState({
     fullName: "",
     birthDate: "",
     phone: "",
@@ -105,13 +92,12 @@ export default function Page() {
     notes: "",
   });
 
-  const selectedPatient = patients.find((p) => p.id === selectedPatientId) || null;
+  const selectedClient = clients.find((client) => client.id === selectedClientId) || null;
 
   useEffect(() => {
     if (!supabase) return;
     supabase.auth.getSession().then(({ data }) => {
-      const token = data.session?.access_token || "";
-      setAccessToken(token);
+      setAccessToken(data.session?.access_token || "");
       setAuthEmail(data.session?.user?.email || "");
     });
     const subscription = supabase.auth.onAuthStateChange((_event, session) => {
@@ -123,21 +109,33 @@ export default function Page() {
 
   useEffect(() => {
     if (!accessToken) return;
-    refreshBaseData(accessToken).catch(() => void 0);
+    refreshWorkspace(accessToken).catch(() => void 0);
   }, [accessToken]);
 
-  async function refreshBaseData(token: string) {
+  useEffect(() => {
+    if (!accessToken || !selectedClientId) return;
+    loadClientContext(selectedClientId).catch(() => void 0);
+  }, [accessToken, selectedClientId]);
+
+  useEffect(() => {
+    if (!accessToken || !threadId) return;
+    api<{ messages: ChatMessage[] }>(`/api/threads/${threadId}/messages`, accessToken)
+      .then((data) => setMessages(data.messages))
+      .catch(() => setMessages([]));
+  }, [accessToken, threadId]);
+
+  async function refreshWorkspace(token: string) {
     try {
-      const [sync, p, t] = await Promise.all([
+      const [sync, clientData] = await Promise.all([
         api<{ user: AppUser }>("/api/auth/sync", token),
-        api<{ patients: Patient[] }>("/api/patients", token),
-        api<{ threads: Thread[] }>("/api/threads", token),
+        api<{ patients: Client[] }>("/api/patients", token),
       ]);
       setAuthError("");
       setAppUser(sync.user);
-      setPatients(p.patients);
-      setGeneralThreads(t.threads);
-      if (!selectedPatientId && p.patients[0]) setSelectedPatientId(p.patients[0].id);
+      setClients(clientData.patients);
+      if (!selectedClientId && clientData.patients[0]) {
+        setSelectedClientId(clientData.patients[0].id);
+      }
     } catch (error) {
       const e = error as Error & { payload?: unknown; status?: number };
       const debug =
@@ -145,7 +143,7 @@ export default function Page() {
           ? JSON.stringify((e.payload as { debug: unknown }).debug, null, 2)
           : "";
       setAuthError(
-        `Não foi possível concluir o acesso da conta.\nStatus: ${e.status || "?"}\nDetalhe: ${e.message}${
+        `Não foi possível concluir o acesso.\nStatus: ${e.status || "?"}\nDetalhe: ${e.message}${
           debug ? `\n\nDebug:\n${debug}` : ""
         }`
       );
@@ -153,25 +151,21 @@ export default function Page() {
     }
   }
 
-  useEffect(() => {
-    if (!accessToken || !selectedPatientId) return;
-    api<{ observations: Observation[] }>(`/api/patients/${selectedPatientId}/observations`, accessToken)
-      .then((data) => setPatientObservations(data.observations))
-      .catch(() => setPatientObservations([]));
-    api<{ threads: Thread[] }>(`/api/patients/${selectedPatientId}/threads`, accessToken)
-      .then((data) => {
-        setPatientThreads(data.threads);
-        if (!patientThreadId && data.threads[0]) setPatientThreadId(data.threads[0].id);
-      })
-      .catch(() => setPatientThreads([]));
-  }, [accessToken, selectedPatientId, patientThreadId]);
-
-  useEffect(() => {
-    if (!accessToken || !patientThreadId) return;
-    api<{ messages: ChatMessage[] }>(`/api/threads/${patientThreadId}/messages`, accessToken)
-      .then((data) => setPatientMessages(data.messages))
-      .catch(() => setPatientMessages([]));
-  }, [accessToken, patientThreadId]);
+  async function loadClientContext(clientId: string) {
+    if (!accessToken) return;
+    const [obs, threadData] = await Promise.all([
+      api<{ observations: Observation[] }>(`/api/patients/${clientId}/observations`, accessToken),
+      api<{ threads: Thread[] }>(`/api/patients/${clientId}/threads`, accessToken),
+    ]);
+    setObservations(obs.observations);
+    setThreads(threadData.threads);
+    if (!threadId && threadData.threads[0]) {
+      setThreadId(threadData.threads[0].id);
+    }
+    if (!threadData.threads[0]) {
+      setMessages([]);
+    }
+  }
 
   async function loginWithGoogle() {
     if (!supabase) return;
@@ -188,416 +182,461 @@ export default function Page() {
     setAppUser(null);
     setAccessToken("");
     setMessages([]);
-    setPatientMessages([]);
   }
 
-  async function sendRecommendation() {
-    if (!question.trim() || !accessToken) return;
-    const userMsg = `[${topic}] ${question.trim()}`;
-    setMessages((prev) => [...prev, { role: "user", content: userMsg }]);
-    setQuestion("");
-    const data = await api<{ answer: string; evidence: { id: string; title: string; source: string; excerpt: string }[] }>(
-      "/api/recommendations",
-      accessToken,
-      {
-        method: "POST",
-        body: JSON.stringify({ topic, question: userMsg }),
-      }
-    );
-    setMessages((prev) => [...prev, { role: "assistant", content: data.answer }]);
-    setLastEvidence(data.evidence);
-    const threads = await api<{ threads: Thread[] }>("/api/threads", accessToken);
-    setGeneralThreads(threads.threads);
-  }
-
-  async function createPatient() {
-    if (!accessToken || !newPatient.fullName.trim()) return;
-    await api("/api/patients", accessToken, {
+  async function createClient() {
+    if (!accessToken || !newClient.fullName.trim()) return;
+    const created = await api<{ patientId: string }>("/api/patients", accessToken, {
       method: "POST",
-      body: JSON.stringify(newPatient),
+      body: JSON.stringify(newClient),
     });
-    setNewPatient({ fullName: "", birthDate: "", phone: "", email: "", objective: "", notes: "" });
-    await refreshBaseData(accessToken);
-    setView("patients");
+    setNewClient({ fullName: "", birthDate: "", phone: "", email: "", objective: "", notes: "" });
+    await refreshWorkspace(accessToken);
+    setSelectedClientId(created.patientId);
+    setThreadId("");
+    setMessages([]);
+    setClientTab("chat");
+    setView("plan");
   }
 
   async function addObservation() {
-    if (!accessToken || !selectedPatientId) return;
+    if (!accessToken || !selectedClientId) return;
     const category = (document.getElementById("obs-category") as HTMLSelectElement).value;
     const note = (document.getElementById("obs-note") as HTMLTextAreaElement).value;
     if (!note.trim()) return;
-    await api(`/api/patients/${selectedPatientId}/observations`, accessToken, {
+    await api(`/api/patients/${selectedClientId}/observations`, accessToken, {
       method: "POST",
       body: JSON.stringify({ category, note }),
     });
     (document.getElementById("obs-note") as HTMLTextAreaElement).value = "";
-    const data = await api<{ observations: Observation[] }>(`/api/patients/${selectedPatientId}/observations`, accessToken);
-    setPatientObservations(data.observations);
+    await loadClientContext(selectedClientId);
   }
 
-  async function sendPatientChat() {
-    if (!accessToken || !selectedPatientId) return;
-    const input = document.getElementById("patient-chat-input") as HTMLTextAreaElement;
-    const message = input.value.trim();
-    if (!message) return;
-    setPatientMessages((prev) => [...prev, { role: "user", content: message }]);
-    input.value = "";
-    const data = await api<{ threadId: string; answer: string }>(`/api/patients/${selectedPatientId}/threads`, accessToken, {
-      method: "POST",
-      body: JSON.stringify({ message, threadId: patientThreadId || null }),
-    });
-    setPatientThreadId(data.threadId);
-    setPatientMessages((prev) => [...prev, { role: "assistant", content: data.answer }]);
-    const threads = await api<{ threads: Thread[] }>(`/api/patients/${selectedPatientId}/threads`, accessToken);
-    setPatientThreads(threads.threads);
-  }
+  async function sendPlanMessage(value?: string) {
+    const text = (value || chatInput).trim();
+    if (!accessToken || !selectedClientId || !text || isSending) return;
 
-  async function loadDocuments() {
-    if (!accessToken) return;
-    const data = await api<{ documents: string[] }>("/api/documents", accessToken);
-    setDocuments(data.documents);
+    setIsSending(true);
+    setChatInput("");
+    setMessages((prev) => [...prev, { role: "user", content: text }]);
+
+    try {
+      const data = await api<{ threadId: string; answer: string; evidence?: Evidence[] }>(
+        `/api/patients/${selectedClientId}/threads`,
+        accessToken,
+        {
+          method: "POST",
+          body: JSON.stringify({ message: text, threadId: threadId || null }),
+        }
+      );
+      setThreadId(data.threadId);
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: data.answer, evidence: data.evidence || [] },
+      ]);
+      await loadClientContext(selectedClientId);
+    } finally {
+      setIsSending(false);
+    }
   }
 
   if (!supabase) {
     return (
-      <main className="main">
-        <h1 className="title">Configuração pendente</h1>
-        <p className="muted">Defina `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` no ambiente.</p>
+      <main className="setup-screen">
+        <h1>Configuração pendente</h1>
+        <p>Defina as variáveis públicas do Supabase no ambiente.</p>
       </main>
     );
   }
 
   if (!accessToken || !appUser) {
     return (
-      <main className="auth-wrap">
-        <div className="auth-card">
-          <section className="auth-hero">
-            <div className="panda-logo" aria-hidden="true">
-              🐼
-            </div>
-            <span className="auth-chip">Nutrição baseada em evidências</span>
-            <h1 className="auth-title" style={{ marginTop: 14 }}>
-              Nutri AI Workspace
-            </h1>
-            <p style={{ marginTop: 12, lineHeight: 1.5 }}>
-              Plataforma clínica para nutricionistas com centralização de pacientes, registro de evolução e recomendações técnicas rastreáveis.
-            </p>
-          </section>
-          <section className="auth-panel">
-            <h2 style={{ margin: 0 }}>Acesso profissional</h2>
-            <p className="muted" style={{ margin: 0 }}>
-              Entre com Google para acessar seu workspace.
-            </p>
-            <div className="login-action">
-              <button className="auth-google-btn" onClick={loginWithGoogle}>
-                Entrar com Google
-              </button>
-              <span className="panda-wave" aria-hidden="true">
-                🐼
-              </span>
-            </div>
-            {authError && <div className="auth-alert">{authError}</div>}
-          </section>
-        </div>
+      <main className="auth-shell">
+        <section className="login-panel">
+          <div className="brand-mark">Nutri AI</div>
+          <p className="login-kicker">Planejamento alimentar assistido por evidências</p>
+          <h1>Construa planos alimentares com coleta guiada, contexto clínico e fontes rastreáveis.</h1>
+          <p className="login-copy">
+            Um workspace para conduzir a conversa com o cliente, organizar dados essenciais e transformar a anamnese em um rascunho revisável.
+          </p>
+          <button className="google-button" onClick={loginWithGoogle}>
+            Entrar com Google
+          </button>
+          {authError && <pre className="auth-alert">{authError}</pre>}
+        </section>
       </main>
     );
   }
 
   return (
-    <div className="app-shell">
+    <div className="workspace">
       <aside className="sidebar">
-        <div className="brand">Nutri AI</div>
-        <p className="subtitle">Workspace clínico</p>
-
-        <div className="nav-col">
-          <button className={`nav-btn ${view === "recommendations" ? "active" : ""}`} onClick={() => setView("recommendations")}>
-            Novo chat
-          </button>
-          <button className={`nav-btn ${view === "patients" ? "active" : ""}`} onClick={() => setView("patients")}>
-            Pacientes
-          </button>
-          <button
-            className={`nav-btn ${view === "documents" ? "active" : ""}`}
-            onClick={() => {
-              setView("documents");
-              loadDocuments().catch(() => void 0);
-            }}
-          >
-            Fontes
-          </button>
-          <button className={`nav-btn ${view === "evidence" ? "active" : ""}`} onClick={() => setView("evidence")}>
-            Evidências
+        <div className="side-head">
+          <div>
+            <div className="brand">Nutri AI</div>
+            <p>{authEmail}</p>
+          </div>
+          <button className="icon-button" onClick={logout} title="Sair da conta">
+            Sair
           </button>
         </div>
 
+        <nav className="nav-list">
+          <button className={view === "plan" ? "nav-item active" : "nav-item"} onClick={() => setView("plan")}>
+            Plano alimentar guiado
+          </button>
+          <button className={view === "clients" ? "nav-item active" : "nav-item"} onClick={() => setView("clients")}>
+            Clientes
+          </button>
+        </nav>
+
         <div className="sidebar-section">
-          <div className="section-title">Pacientes</div>
-          <div className="nav-col">
-            {patients.map((p) => (
+          <div className="section-row">
+            <span>Clientes</span>
+            <button
+              className="mini-action"
+              onClick={() => {
+                setSelectedClientId("");
+                setView("clients");
+              }}
+            >
+              Novo
+            </button>
+          </div>
+          <div className="client-list">
+            {clients.map((client) => (
               <button
-                key={p.id}
-                className={`tiny-btn ${selectedPatientId === p.id ? "active" : ""}`}
+                key={client.id}
+                className={selectedClientId === client.id ? "client-item active" : "client-item"}
                 onClick={() => {
-                  setSelectedPatientId(p.id);
-                  setPatientThreadId("");
-                  setView("patients");
+                  setSelectedClientId(client.id);
+                  setThreadId("");
+                  setMessages([]);
+                  setView("plan");
                 }}
               >
-                {p.full_name}
+                <strong>{client.full_name}</strong>
+                <span>{client.objective || "Objetivo não definido"}</span>
               </button>
             ))}
           </div>
         </div>
 
-        <div className="sidebar-section">
-          <div className="section-title">Conversas gerais</div>
-          <div className="nav-col">
-            {generalThreads.map((thread) => (
-              <button key={thread.id} className="tiny-btn">
-                {thread.title}
-              </button>
-            ))}
+        {threads.length > 0 && (
+          <div className="sidebar-section">
+            <div className="section-row">
+              <span>Conversas do cliente</span>
+            </div>
+            <div className="client-list">
+              {threads.map((thread) => (
+                <button
+                  key={thread.id}
+                  className={thread.id === threadId ? "thread-item active" : "thread-item"}
+                  onClick={() => setThreadId(thread.id)}
+                >
+                  {thread.title}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </aside>
 
-      <main className="main">
-        <div className="topbar">
-          <div>
-            <h1 className="title">Nutri AI</h1>
-            <p className="muted" style={{ marginTop: 4 }}>
-              {authEmail}
-            </p>
-          </div>
-          <button className="danger-btn" onClick={logout}>
-            Sair da conta
-          </button>
-        </div>
-
-        {view === "recommendations" && (
-          <div className="content-card">
-            <h2 style={{ marginTop: 0 }}>Recomendações para profissionais</h2>
-            <div className="tabs">
-              {TOPICS.map((t) => (
-                <button key={t} className={`tab-btn ${topic === t ? "active" : ""}`} onClick={() => setTopic(t)}>
-                  {t}
-                </button>
-              ))}
-            </div>
-            <div className="chat-box">
-              {messages.map((message, index) => (
-                <div key={index} className={`msg ${message.role}`}>
-                  {message.content}
+      <main className="main-area">
+        {view === "plan" && (
+          <section className="planner-view">
+            <header className="page-header">
+              <div>
+                <p className="eyebrow">Chat ping-pong</p>
+                <h1>Plano alimentar para cliente</h1>
+                <p>
+                  O assistente coleta uma informação por vez, identifica lacunas e só consolida o plano quando houver contexto suficiente.
+                </p>
+              </div>
+              {selectedClient && (
+                <div className="client-summary">
+                  <span>Cliente ativo</span>
+                  <strong>{selectedClient.full_name}</strong>
+                  <small>{selectedClient.objective || "Sem objetivo registrado"}</small>
                 </div>
-              ))}
-            </div>
-            <div style={{ marginTop: 10 }}>
-              <textarea
-                className="textarea"
-                placeholder={`Pergunte sobre ${topic}`}
-                value={question}
-                onChange={(e) => setQuestion(e.target.value)}
-              />
-              <button className="primary" onClick={() => sendRecommendation().catch(() => void 0)} style={{ marginTop: 8 }}>
-                Enviar pergunta
-              </button>
-            </div>
-          </div>
+              )}
+            </header>
+
+            {!selectedClient ? (
+              <EmptyClientState onCreate={() => setView("clients")} />
+            ) : (
+              <div className="chat-layout">
+                <div className="chat-main">
+                  <div className="message-list">
+                    {messages.length === 0 && (
+                      <div className="empty-chat">
+                        <h2>Comece pela primeira pergunta clínica.</h2>
+                        <p>Use um atalho ou descreva o caso. A IA deve perguntar o próximo dado faltante antes de fechar o plano.</p>
+                        <div className="starter-grid">
+                          {STARTER_PROMPTS.map((prompt) => (
+                            <button key={prompt} onClick={() => sendPlanMessage(prompt)}>
+                              {prompt}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {messages.map((message, index) => (
+                      <article key={index} className={message.role === "user" ? "message user" : "message assistant"}>
+                        <div className="message-label">{message.role === "user" ? "Profissional" : "Nutri AI"}</div>
+                        <div className="message-content">{message.content}</div>
+                        {message.role === "assistant" && message.evidence && message.evidence.length > 0 && (
+                          <button className="source-button" onClick={() => setSourcePanel(message.evidence || [])}>
+                            Ver fontes usadas
+                          </button>
+                        )}
+                      </article>
+                    ))}
+                  </div>
+
+                  <div className="composer">
+                    <textarea
+                      value={chatInput}
+                      onChange={(event) => setChatInput(event.target.value)}
+                      placeholder="Responda a pergunta atual ou descreva o próximo dado do cliente..."
+                      onKeyDown={(event) => {
+                        if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                          sendPlanMessage().catch(() => void 0);
+                        }
+                      }}
+                    />
+                    <button onClick={() => sendPlanMessage().catch(() => void 0)} disabled={isSending}>
+                      {isSending ? "Analisando..." : "Enviar"}
+                    </button>
+                  </div>
+                </div>
+
+                <aside className="context-panel">
+                  <h2>Dados do cliente</h2>
+                  <dl>
+                    <div>
+                      <dt>Objetivo</dt>
+                      <dd>{selectedClient.objective || "Não definido"}</dd>
+                    </div>
+                    <div>
+                      <dt>Nascimento</dt>
+                      <dd>{selectedClient.birth_date || "Não informado"}</dd>
+                    </div>
+                    <div>
+                      <dt>Resumo</dt>
+                      <dd>{selectedClient.notes || "Sem resumo clínico inicial."}</dd>
+                    </div>
+                  </dl>
+                </aside>
+              </div>
+            )}
+          </section>
         )}
 
-        {view === "patients" && (
-          <div className="grid-2">
-            {!selectedPatient && (
-              <section className="content-card">
-                <h2 style={{ marginTop: 0 }}>Novo paciente</h2>
-                <label className="label">Nome completo</label>
-                <input className="input" value={newPatient.fullName} onChange={(e) => setNewPatient({ ...newPatient, fullName: e.target.value })} />
-                <label className="label">Nascimento</label>
-                <input className="input" placeholder="AAAA-MM-DD" value={newPatient.birthDate} onChange={(e) => setNewPatient({ ...newPatient, birthDate: e.target.value })} />
-                <label className="label">Telefone</label>
-                <input className="input" value={newPatient.phone} onChange={(e) => setNewPatient({ ...newPatient, phone: e.target.value })} />
-                <label className="label">Email</label>
-                <input className="input" value={newPatient.email} onChange={(e) => setNewPatient({ ...newPatient, email: e.target.value })} />
-                <label className="label">Objetivo principal</label>
-                <input className="input" value={newPatient.objective} onChange={(e) => setNewPatient({ ...newPatient, objective: e.target.value })} />
-                <label className="label">Resumo inicial</label>
-                <textarea className="textarea" value={newPatient.notes} onChange={(e) => setNewPatient({ ...newPatient, notes: e.target.value })} />
-                <button className="primary" onClick={() => createPatient().catch(() => void 0)} style={{ marginTop: 8 }}>
-                  Cadastrar paciente
+        {view === "clients" && (
+          <section className="clients-view">
+            <header className="page-header compact">
+              <div>
+                <p className="eyebrow">Cadastro clínico</p>
+                <h1>{selectedClient ? selectedClient.full_name : "Novo cliente"}</h1>
+              </div>
+            </header>
+
+            {!selectedClient ? (
+              <section className="form-card">
+                <ClientForm value={newClient} onChange={setNewClient} />
+                <button className="primary-action" onClick={() => createClient().catch(() => void 0)}>
+                  Cadastrar cliente
                 </button>
               </section>
-            )}
-
-            {selectedPatient && (
-              <section className="content-card" style={{ gridColumn: "1 / -1" }}>
-                <h2 style={{ marginTop: 0 }}>{selectedPatient.full_name}</h2>
-                <p className="muted">{selectedPatient.objective || "Sem objetivo registrado"}</p>
-                <div className="tabs">
-                  <button className={`tab-btn ${patientTab === "record" ? "active" : ""}`} onClick={() => setPatientTab("record")}>
+            ) : (
+              <section className="client-record">
+                <div className="segmented">
+                  <button className={clientTab === "chat" ? "active" : ""} onClick={() => setClientTab("chat")}>
+                    Chat do plano
+                  </button>
+                  <button className={clientTab === "record" ? "active" : ""} onClick={() => setClientTab("record")}>
                     Dados
                   </button>
-                  <button className={`tab-btn ${patientTab === "observations" ? "active" : ""}`} onClick={() => setPatientTab("observations")}>
+                  <button className={clientTab === "notes" ? "active" : ""} onClick={() => setClientTab("notes")}>
                     Observações
                   </button>
-                  <button className={`tab-btn ${patientTab === "chat" ? "active" : ""}`} onClick={() => setPatientTab("chat")}>
-                    Chat clínico
-                  </button>
                 </div>
 
-                {patientTab === "record" && (
-                  <div className="grid-2">
-                    <div>
-                      <label className="label">Nome completo</label>
-                      <input
-                        className="input"
-                        value={selectedPatient.full_name}
-                        onChange={(e) =>
-                          setPatients((prev) => prev.map((p) => (p.id === selectedPatient.id ? { ...p, full_name: e.target.value } : p)))
-                        }
-                      />
-                      <label className="label">Nascimento</label>
-                      <input
-                        className="input"
-                        value={selectedPatient.birth_date || ""}
-                        onChange={(e) =>
-                          setPatients((prev) => prev.map((p) => (p.id === selectedPatient.id ? { ...p, birth_date: e.target.value } : p)))
-                        }
-                      />
-                      <label className="label">Telefone</label>
-                      <input
-                        className="input"
-                        value={selectedPatient.phone || ""}
-                        onChange={(e) =>
-                          setPatients((prev) => prev.map((p) => (p.id === selectedPatient.id ? { ...p, phone: e.target.value } : p)))
-                        }
-                      />
-                    </div>
-                    <div>
-                      <label className="label">Email</label>
-                      <input
-                        className="input"
-                        value={selectedPatient.email || ""}
-                        onChange={(e) =>
-                          setPatients((prev) => prev.map((p) => (p.id === selectedPatient.id ? { ...p, email: e.target.value } : p)))
-                        }
-                      />
-                      <label className="label">Objetivo</label>
-                      <input
-                        className="input"
-                        value={selectedPatient.objective || ""}
-                        onChange={(e) =>
-                          setPatients((prev) => prev.map((p) => (p.id === selectedPatient.id ? { ...p, objective: e.target.value } : p)))
-                        }
-                      />
-                      <label className="label">Notas</label>
-                      <textarea
-                        className="textarea"
-                        value={selectedPatient.notes || ""}
-                        onChange={(e) =>
-                          setPatients((prev) => prev.map((p) => (p.id === selectedPatient.id ? { ...p, notes: e.target.value } : p)))
-                        }
-                      />
-                    </div>
+                {clientTab === "chat" && (
+                  <div className="record-panel">
+                    <p>Abra o chat guiado para continuar a coleta e construção do plano alimentar.</p>
+                    <button className="primary-action" onClick={() => setView("plan")}>
+                      Continuar plano alimentar
+                    </button>
                   </div>
                 )}
 
-                {patientTab === "observations" && (
-                  <div>
-                    <label className="label">Categoria</label>
-                    <select id="obs-category" className="select">
-                      <option value="consulta">consulta</option>
-                      <option value="evolucao">evolução</option>
-                      <option value="conduta">conduta</option>
-                      <option value="exame">exame</option>
-                    </select>
-                    <label className="label">Observação</label>
-                    <textarea id="obs-note" className="textarea" />
-                    <button className="primary" onClick={() => addObservation().catch(() => void 0)} style={{ marginTop: 8 }}>
-                      Adicionar observação
-                    </button>
-                    <div style={{ marginTop: 12 }}>
-                      {patientObservations.map((obs) => (
-                        <div className="msg" key={obs.id}>
+                {clientTab === "record" && (
+                  <div className="record-panel">
+                    <ClientDetails client={selectedClient} />
+                  </div>
+                )}
+
+                {clientTab === "notes" && (
+                  <div className="record-panel">
+                    <div className="note-form">
+                      <select id="obs-category">
+                        <option value="consulta">Consulta</option>
+                        <option value="evolucao">Evolução</option>
+                        <option value="conduta">Conduta</option>
+                        <option value="exame">Exame</option>
+                      </select>
+                      <textarea id="obs-note" placeholder="Registre uma observação objetiva..." />
+                      <button className="primary-action" onClick={() => addObservation().catch(() => void 0)}>
+                        Adicionar observação
+                      </button>
+                    </div>
+                    <div className="notes-list">
+                      {observations.map((obs) => (
+                        <article key={obs.id}>
                           <strong>{obs.category}</strong>
-                          {"\n"}
-                          {obs.note}
-                        </div>
+                          <p>{obs.note}</p>
+                        </article>
                       ))}
                     </div>
                   </div>
                 )}
-
-                {patientTab === "chat" && (
-                  <div>
-                    <div className="chat-box">
-                      {patientMessages.map((message, index) => (
-                        <div key={index} className={`msg ${message.role}`}>
-                          {message.content}
-                        </div>
-                      ))}
-                    </div>
-                    <textarea id="patient-chat-input" className="textarea" placeholder={`Conversar sobre ${selectedPatient.full_name}`} />
-                    <button className="primary" onClick={() => sendPatientChat().catch(() => void 0)} style={{ marginTop: 8 }}>
-                      Enviar no chat clínico
-                    </button>
-                  </div>
-                )}
               </section>
             )}
-
-            {!selectedPatient && (
-              <section className="content-card">
-                <h3 style={{ marginTop: 0 }}>Pacientes cadastrados</h3>
-                {patients.map((patient) => (
-                  <button
-                    key={patient.id}
-                    className="tiny-btn"
-                    style={{ marginBottom: 8 }}
-                    onClick={() => {
-                      setSelectedPatientId(patient.id);
-                      setPatientTab("chat");
-                    }}
-                  >
-                    {patient.full_name}
-                  </button>
-                ))}
-              </section>
-            )}
-          </div>
+          </section>
         )}
+      </main>
 
-        {view === "documents" && (
-          <div className="content-card">
-            <h2 style={{ marginTop: 0 }}>Documentos usados pelo RAG</h2>
-            <p className="muted">Base técnica disponível para fundamentação das respostas.</p>
-            <div className="nav-col">
-              {documents.map((doc) => (
-                <div key={doc} className="msg">
-                  {doc}
-                </div>
+      {sourcePanel && (
+        <div className="source-drawer" role="dialog" aria-modal="true">
+          <div className="source-card">
+            <header>
+              <div>
+                <p className="eyebrow">Rastreabilidade</p>
+                <h2>Fontes usadas na resposta</h2>
+              </div>
+              <button className="icon-button" onClick={() => setSourcePanel(null)}>
+                Fechar
+              </button>
+            </header>
+            <div className="source-list">
+              {sourcePanel.map((item) => (
+                <article key={`${item.id}-${item.title}`}>
+                  <strong>
+                    [{item.id}] {technicalTitle(item.title)}
+                  </strong>
+                  <span>{item.source || "Fonte sem caminho registrado"}</span>
+                  <p>{item.excerpt}</p>
+                </article>
               ))}
             </div>
           </div>
-        )}
-
-        {view === "evidence" && (
-          <div className="content-card">
-            <h2 style={{ marginTop: 0 }}>Trechos de evidência</h2>
-            {lastEvidence.length === 0 && <p className="muted">Ainda não há evidências de uma resposta recente.</p>}
-            {lastEvidence.map((item) => (
-              <div className="msg" key={item.id}>
-                <strong>
-                  [{item.id}] {item.title}
-                </strong>
-                {"\n"}
-                <span className="muted">{item.source}</span>
-                {"\n\n"}
-                {item.excerpt}
-              </div>
-            ))}
-          </div>
-        )}
-      </main>
+        </div>
+      )}
     </div>
   );
+}
+
+function EmptyClientState({ onCreate }: { onCreate: () => void }) {
+  return (
+    <div className="empty-state">
+      <h2>Selecione ou cadastre um cliente.</h2>
+      <p>O plano alimentar é construído a partir do contexto individual do cliente e das respostas do chat guiado.</p>
+      <button className="primary-action" onClick={onCreate}>
+        Cadastrar cliente
+      </button>
+    </div>
+  );
+}
+
+function ClientForm({
+  value,
+  onChange,
+}: {
+  value: {
+    fullName: string;
+    birthDate: string;
+    phone: string;
+    email: string;
+    objective: string;
+    notes: string;
+  };
+  onChange: (value: {
+    fullName: string;
+    birthDate: string;
+    phone: string;
+    email: string;
+    objective: string;
+    notes: string;
+  }) => void;
+}) {
+  return (
+    <div className="client-form">
+      <label>
+        Nome completo
+        <input value={value.fullName} onChange={(event) => onChange({ ...value, fullName: event.target.value })} />
+      </label>
+      <label>
+        Nascimento
+        <input placeholder="AAAA-MM-DD" value={value.birthDate} onChange={(event) => onChange({ ...value, birthDate: event.target.value })} />
+      </label>
+      <label>
+        Telefone
+        <input value={value.phone} onChange={(event) => onChange({ ...value, phone: event.target.value })} />
+      </label>
+      <label>
+        Email
+        <input value={value.email} onChange={(event) => onChange({ ...value, email: event.target.value })} />
+      </label>
+      <label>
+        Objetivo principal
+        <input value={value.objective} onChange={(event) => onChange({ ...value, objective: event.target.value })} />
+      </label>
+      <label className="wide">
+        Resumo inicial
+        <textarea value={value.notes} onChange={(event) => onChange({ ...value, notes: event.target.value })} />
+      </label>
+    </div>
+  );
+}
+
+function ClientDetails({ client }: { client: Client }) {
+  return (
+    <dl className="details-grid">
+      <div>
+        <dt>Nome</dt>
+        <dd>{client.full_name}</dd>
+      </div>
+      <div>
+        <dt>Email</dt>
+        <dd>{client.email || "Não informado"}</dd>
+      </div>
+      <div>
+        <dt>Telefone</dt>
+        <dd>{client.phone || "Não informado"}</dd>
+      </div>
+      <div>
+        <dt>Objetivo</dt>
+        <dd>{client.objective || "Não definido"}</dd>
+      </div>
+      <div className="wide">
+        <dt>Resumo</dt>
+        <dd>{client.notes || "Sem resumo registrado."}</dd>
+      </div>
+    </dl>
+  );
+}
+
+function technicalTitle(title: string): string {
+  const clean = title.replace(/_/g, " ").replace(/\s+\(1\)$/g, "").trim();
+  const titles: Record<string, string> = {
+    guia_alimentar_populacao_brasileira_2ed: "Guia Alimentar para a População Brasileira",
+    guia_da_crianca_2019: "Guia Alimentar para Crianças Brasileiras Menores de 2 Anos",
+    protocolo_sisvan: "SISVAN: protocolos de vigilância alimentar e nutricional",
+    PCDT_DoencaCeliaca: "PCDT: doença celíaca",
+    "PCDT DM2_17.04.2024_MSM": "PCDT: diabetes mellitus tipo 2",
+  };
+  return titles[title] || titles[clean] || clean;
 }

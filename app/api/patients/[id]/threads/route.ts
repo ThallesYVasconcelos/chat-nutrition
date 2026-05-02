@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAppUser } from "@/lib/api-auth";
 import { sql } from "@/lib/db";
-import { generateProfessionalRecommendation, searchEvidence } from "@/lib/ai";
+import { generateMealPlanGuidance, searchEvidence } from "@/lib/ai";
 
 const messageSchema = z.object({
   message: z.string().min(2),
@@ -35,6 +35,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const payload = messageSchema.parse(await request.json());
 
     let threadId = payload.threadId || "";
+    const patientRows = await sql<{ full_name: string; objective: string | null; notes: string | null }>(
+      `
+      select full_name, objective, notes
+      from public.patients
+      where id = $1 and user_id = $2
+      limit 1
+      `,
+      [id, user.id]
+    );
+    const patient = patientRows[0];
+
     if (!threadId) {
       const created = await sql<{ id: string }>(
         `
@@ -56,9 +67,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     );
 
     const evidence = await searchEvidence(payload.message);
-    const answer = await generateProfessionalRecommendation({
-      topic: "Acompanhamento do paciente",
-      question: payload.message,
+    const evidencePayload = evidence.slice(0, 6).map((item, index) => ({
+      id: `F${index + 1}`,
+      title: item.title,
+      source: item.source,
+      similarity: item.similarity,
+      excerpt: item.body.slice(0, 700),
+    }));
+    const answer = await generateMealPlanGuidance({
+      clientName: patient?.full_name,
+      clientObjective: patient?.objective,
+      clientNotes: patient?.notes,
+      message: payload.message,
       evidence,
     });
 
@@ -71,15 +91,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         threadId,
         user.id,
         answer,
-        JSON.stringify(
-          evidence.slice(0, 6).map((item, index) => ({
-            id: `F${index + 1}`,
-            title: item.title,
-            source: item.source,
-            similarity: item.similarity,
-            excerpt: item.body.slice(0, 700),
-          }))
-        ),
+        JSON.stringify(evidencePayload),
       ]
     );
 
@@ -93,21 +105,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       `,
       [
         `Paciente: ${payload.message.slice(0, 72)}`,
-        JSON.stringify(
-          evidence.slice(0, 6).map((item, index) => ({
-            id: `F${index + 1}`,
-            title: item.title,
-            source: item.source,
-            similarity: item.similarity,
-            excerpt: item.body.slice(0, 700),
-          }))
-        ),
+        JSON.stringify(evidencePayload),
         threadId,
         user.id,
       ]
     );
 
-    return NextResponse.json({ threadId, answer });
+    return NextResponse.json({ threadId, answer, evidence: evidencePayload });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: "invalid_payload", details: error.issues }, { status: 400 });

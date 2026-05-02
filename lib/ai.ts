@@ -136,3 +136,51 @@ export async function generateProfessionalRecommendation(input: {
 
   return "Não foi possível gerar resposta da LLM neste momento. Revise os trechos recuperados e tente novamente.";
 }
+
+export async function generateMealPlanGuidance(input: {
+  clientName?: string;
+  clientObjective?: string | null;
+  clientNotes?: string | null;
+  message: string;
+  evidence: EvidenceDoc[];
+}): Promise<string> {
+  const evidenceText = input.evidence
+    .slice(0, 6)
+    .map(
+      (doc, index) =>
+        `[F${index + 1}] Fonte: ${doc.title} (${doc.source || "sem fonte"})\nTrecho: ${doc.body.slice(0, 1200)}`
+    )
+    .join("\n\n");
+
+  const messages = [
+    {
+      role: "system",
+      content:
+        "Você é um assistente de apoio a nutricionistas para construir plano alimentar em formato ping-pong. Faça uma pergunta por vez quando faltarem dados. Antes de fechar um plano, verifique idade, sexo, altura, peso, medidas, objetivo, rotina, refeições por dia, orçamento, preferências, restrições, alergias, patologias e medicamentos. Se já houver dados suficientes, gere um rascunho de plano alimentar revisável pelo nutricionista. Toda afirmação baseada em documento deve citar [F1], [F2] etc. Não invente fonte e não substitua conduta clínica.",
+    },
+    {
+      role: "user",
+      content: `Cliente: ${input.clientName || "não informado"}\nObjetivo registrado: ${
+        input.clientObjective || "não informado"
+      }\nResumo do cadastro: ${input.clientNotes || "não informado"}\n\nMensagem atual:\n${
+        input.message
+      }\n\nEvidências recuperadas:\n${evidenceText}\n\nResponda de forma objetiva. Se faltam dados essenciais, pergunte somente o próximo dado mais importante. Se os dados forem suficientes, organize: síntese do caso, alertas, estrutura alimentar por refeições, substituições econômicas, lista de compras e pontos para validação profissional.`,
+    },
+  ];
+
+  try {
+    const output = await getReplicateClient().run(env.replicateChatModel as ReplicateModelRef, {
+      input: {
+        messages,
+        temperature: 0.15,
+        max_completion_tokens: env.replicateMaxCompletionTokens,
+      },
+    });
+    const text = normalizeTextOutput(output);
+    if (text) return text;
+  } catch {
+    // fallback below
+  }
+
+  return "Não consegui consultar a LLM agora. Continue a coleta com: idade, sexo, altura, peso, objetivo, rotina, orçamento, restrições, alergias, patologias e medicamentos.";
+}
