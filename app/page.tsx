@@ -68,6 +68,20 @@ function getSupabaseClient(): SupabaseClient | null {
   return createClient(url, key);
 }
 
+function PandaLogo({ compact = false }: { compact?: boolean }) {
+  return (
+    <div className={compact ? "panda-logo compact" : "panda-logo"} aria-hidden="true">
+      <span className="panda-ear left" />
+      <span className="panda-ear right" />
+      <span className="panda-face">
+        <span className="panda-eye left" />
+        <span className="panda-eye right" />
+        <span className="panda-nose" />
+      </span>
+    </div>
+  );
+}
+
 function cleanAssistantText(content: string): string {
   return content.replace(/\*\*(.*?)\*\*/g, "$1").trim();
 }
@@ -476,7 +490,10 @@ export default function Page() {
     return (
       <main className="auth-shell">
         <section className="login-panel">
-          <div className="brand-mark">Prato Clínico</div>
+          <div className="brand-mark">
+            <PandaLogo />
+            <span>Prato Clínico</span>
+          </div>
           <p className="login-kicker">Planejamento alimentar com raciocínio clínico</p>
           <h1>Conduza a conversa, organize o caso e gere um plano revisável.</h1>
           <p className="login-copy">
@@ -496,11 +513,7 @@ export default function Page() {
       <aside className="sidebar">
         <div className="side-head">
           <div className="profile-block">
-            {appUser.avatar_url ? (
-              <img className="profile-photo" src={appUser.avatar_url} alt="" referrerPolicy="no-referrer" />
-            ) : (
-              <div className="profile-fallback">{(appUser.full_name || authEmail || "P").slice(0, 1).toUpperCase()}</div>
-            )}
+            <PandaLogo compact />
             <div>
               <div className="brand">Prato Clínico</div>
               <p>{appUser.full_name || authEmail}</p>
@@ -525,6 +538,15 @@ export default function Page() {
             Clientes
           </button>
         </nav>
+
+        <div className="user-chip">
+          {appUser.avatar_url ? (
+            <img className="profile-photo" src={appUser.avatar_url} alt="Foto do perfil" referrerPolicy="no-referrer" />
+          ) : (
+            <div className="profile-fallback">{(appUser.full_name || authEmail || "P").slice(0, 1).toUpperCase()}</div>
+          )}
+          <span>{appUser.full_name || authEmail}</span>
+        </div>
 
         <div className="sidebar-section">
           <div className="section-row">
