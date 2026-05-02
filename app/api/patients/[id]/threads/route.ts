@@ -21,6 +21,15 @@ function formatHistory(messages: MessageRow[]): string {
     .slice(-6000);
 }
 
+function sanitizePatientNotes(notes?: string | null): string {
+  if (!notes) return "";
+  let clean = notes;
+  clean = clean.replace(/- Altura:\s*(\d+),(\d+)\s*cm/gi, "- Altura: $1,$2 m");
+  clean = clean.replace(/- Altura:\s*(\d+\.\d+)\s*cm/gi, "- Altura: $1 m");
+  clean = clean.replace(/- IMC calculado:\s*(\d{3,}(?:[,.]\d+)?)/gi, "- IMC calculado: revisar com peso e altura corrigidos");
+  return clean;
+}
+
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireAppUser();
@@ -93,9 +102,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       [threadId, user.id]
     );
     const conversationHistory = formatHistory(recentMessages);
+    const patientNotes = sanitizePatientNotes(patient?.notes);
     const evidenceQuery = [
       patient?.objective || "",
-      patient?.notes || "",
+      patientNotes,
       conversationHistory,
       payload.message,
     ]
@@ -112,7 +122,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const answer = await generateMealPlanGuidance({
       clientName: patient?.full_name,
       clientObjective: patient?.objective,
-      clientNotes: patient?.notes,
+      clientNotes: patientNotes,
       message: payload.message,
       conversationHistory,
       evidence,
