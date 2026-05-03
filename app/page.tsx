@@ -93,6 +93,134 @@ const PROFESSIONAL_TOPICS = [
   "Doença celíaca",
 ];
 
+const RECORD_SECTIONS = [
+  {
+    title: "Identificação",
+    fields: [
+      ["attendanceDate", "Data do atendimento"],
+      ["attendanceLocation", "Local de atendimento"],
+      ["cpf", "CPF"],
+      ["susCard", "Cartão SUS"],
+      ["motherName", "Nome completo da mãe"],
+      ["sex", "Sexo"],
+      ["birthCity", "Município de nascimento"],
+      ["birthUf", "UF de nascimento"],
+      ["nationality", "Nacionalidade"],
+      ["raceColor", "Cor/raça"],
+      ["address", "Endereço"],
+      ["addressNumber", "Número"],
+      ["district", "Bairro"],
+      ["cityState", "Cidade/Estado"],
+      ["zipCode", "CEP"],
+      ["contact", "Contato"],
+      ["income", "Renda média"],
+      ["laborActivities", "Atividades laborais"],
+      ["maritalStatus", "Estado civil"],
+      ["householdPeople", "Pessoas no domicílio"],
+      ["schoolCreche", "Frequenta ou frequentou escola/creche"],
+      ["schooling", "Escolaridade"],
+      ["programs", "Programas vinculados"],
+    ],
+  },
+  {
+    title: "Motivo da consulta",
+    fields: [
+      ["consultReason", "Motivo da consulta"],
+      ["referralSource", "Encaminhamento"],
+      ["dietSpecificities", "Especificidades dietéticas"],
+    ],
+  },
+  {
+    title: "Avaliação antropométrica",
+    fields: [
+      ["birthWeightKg", "Peso ao nascer"],
+      ["childHeightCm", "Altura da criança"],
+      ["childNutritionalStatus", "Estado nutricional da criança"],
+      ["headCircumference", "CC"],
+      ["headCircumferenceClassification", "Classificação da CC"],
+      ["adolescentWeightKg", "Peso do adolescente"],
+      ["adolescentHeightCm", "Altura do adolescente"],
+      ["adolescentNutritionalStatus", "Estado nutricional do adolescente"],
+      ["prePregnancyWeight", "Peso pré-gestacional"],
+      ["dum", "DUM"],
+      ["pregnantWeightKg", "Peso da gestante"],
+      ["pregnantHeightCm", "Altura da gestante"],
+      ["pregnantNutritionalStatus", "Estado nutricional da gestante"],
+      ["weightKg", "Peso adulto"],
+      ["heightCm", "Altura adulto"],
+      ["adultNutritionalStatus", "Estado nutricional adulto"],
+      ["waistCm", "CC adulto"],
+      ["hipCm", "CQ adulto"],
+      ["waistHipRatio", "RCQ"],
+      ["waistHipClassification", "Classificação RCQ"],
+      ["calfCircumference", "Circunferência da panturrilha"],
+      ["calfClassification", "Classificação da panturrilha"],
+      ["armCircumference", "Circunferência do braço"],
+      ["armClassification", "Classificação do braço"],
+      ["skinfoldMin", "PT mínima"],
+      ["skinfoldMed", "PT média"],
+      ["skinfoldMax", "PT máxima"],
+      ["recentWeightLoss", "Perda de peso recente"],
+      ["recentWeightLossKg", "Quantos kg perdeu"],
+      ["physicalActivity", "Atividade física"],
+      ["activityType", "Tipo de atividade"],
+      ["activityFrequency", "Frequência"],
+      ["activityDuration", "Duração"],
+      ["tmb", "TMB"],
+      ["vet", "VET"],
+    ],
+  },
+  {
+    title: "Histórico clínico",
+    fields: [
+      ["diagnosedDiseases", "Doenças diagnosticadas"],
+      ["otherDiagnosedDiseases", "Outras doenças diagnosticadas"],
+      ["familyHistory", "Antecedentes familiares"],
+      ["otherFamilyHistory", "Outros antecedentes familiares"],
+      ["deficienciesIntercurrences", "Deficiências/intercorrências"],
+      ["otherDeficienciesIntercurrences", "Outras deficiências/intercorrências"],
+      ["smokingAlcohol", "Tabagismo/etilismo"],
+      ["surgicalHistory", "Passado cirúrgico"],
+      ["supplementsMedicationTable", "Medicamentos/suplementos, dose e frequência"],
+      ["patientGroup", "Grupo de acompanhamento"],
+      ["followUpType", "Tipo de acompanhamento"],
+    ],
+  },
+  {
+    title: "Exames e avaliação física",
+    fields: [
+      ["labTests", "Exames laboratoriais"],
+      ["childElderlyPhysicalExam", "Avaliação física criança/idoso"],
+      ["hairFindings", "Cabelo"],
+      ["eyeFindings", "Olhos"],
+      ["tongueFindings", "Língua"],
+      ["skinFindings", "Pele"],
+      ["nailFindings", "Unhas"],
+    ],
+  },
+] as const;
+
+type RecordField = readonly [string, string];
+const RECORD_FIELDS: RecordField[] = RECORD_SECTIONS.flatMap((section) => section.fields as readonly RecordField[]);
+const RECORD_TEXTAREA_KEYS = new Set([
+  "programs",
+  "consultReason",
+  "dietSpecificities",
+  "diagnosedDiseases",
+  "otherDiagnosedDiseases",
+  "familyHistory",
+  "otherFamilyHistory",
+  "deficienciesIntercurrences",
+  "otherDeficienciesIntercurrences",
+  "smokingAlcohol",
+  "surgicalHistory",
+  "supplementsMedicationTable",
+  "patientGroup",
+  "followUpType",
+  "labTests",
+  "childElderlyPhysicalExam",
+]);
+
 function getSupabaseClient(): SupabaseClient | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -162,8 +290,39 @@ function baseNotes(notes: string | null | undefined): string {
   return (notes || "").split(/\n\nDados cl[íi]nicos estruturados para o chat:/i)[0]?.trim() || "";
 }
 
-function patientClinicalField(patient: Client, key: keyof ClinicalProfile, label: string): string {
+function patientClinicalField(patient: Client, key: string, label: string): string {
   return patient.clinical_profile?.[key] || structuredField(patient.notes, label);
+}
+
+function valueFromRecordDraft(draft: ClinicalProfile, key: string): string {
+  return draft[key] || "";
+}
+
+function clinicalProfileFromForm(value: ClientFormValue): ClinicalProfile {
+  const bmi = calculateBmi(value.weightKg, value.heightCm);
+  return {
+    sex: value.sex,
+    weightKg: value.weightKg ? `${value.weightKg} kg` : "",
+    heightCm: value.heightCm ? formatHeight(value.heightCm) : "",
+    bmi,
+    waistCm: value.waistCm ? `${value.waistCm} cm` : "",
+    hipCm: value.hipCm ? `${value.hipCm} cm` : "",
+    socioeconomic: value.socioeconomic,
+    budget: value.budget,
+    mealsPerDay: value.mealsPerDay,
+    routine: value.routine,
+    breakfast: value.breakfast,
+    morningSnack: value.morningSnack,
+    lunch: value.lunch,
+    afternoonSnack: value.afternoonSnack,
+    dinner: value.dinner,
+    supper: value.supper,
+    weekendEating: value.weekendEating,
+    restrictions: value.restrictions,
+    allergies: value.allergies,
+    pathologies: value.pathologies,
+    medications: value.medications,
+  };
 }
 
 function clientToFormValue(client: Client | null): ClientFormValue {
@@ -218,30 +377,7 @@ function normalizeBirthDate(value: string): string {
 }
 
 function buildPatientPayload(value: ClientFormValue) {
-  const bmi = calculateBmi(value.weightKg, value.heightCm);
-  const clinicalProfile: ClinicalProfile = {
-    sex: value.sex,
-    weightKg: value.weightKg ? `${value.weightKg} kg` : "",
-    heightCm: value.heightCm ? formatHeight(value.heightCm) : "",
-    bmi,
-    waistCm: value.waistCm ? `${value.waistCm} cm` : "",
-    hipCm: value.hipCm ? `${value.hipCm} cm` : "",
-    socioeconomic: value.socioeconomic,
-    budget: value.budget,
-    mealsPerDay: value.mealsPerDay,
-    routine: value.routine,
-    breakfast: value.breakfast,
-    morningSnack: value.morningSnack,
-    lunch: value.lunch,
-    afternoonSnack: value.afternoonSnack,
-    dinner: value.dinner,
-    supper: value.supper,
-    weekendEating: value.weekendEating,
-    restrictions: value.restrictions,
-    allergies: value.allergies,
-    pathologies: value.pathologies,
-    medications: value.medications,
-  };
+  const clinicalProfile = clinicalProfileFromForm(value);
   const clinicalRows = [
     ["Sexo", clinicalProfile.sex || ""],
     ["Peso", clinicalProfile.weightKg || ""],
@@ -433,6 +569,7 @@ function downloadPatientRecordPdf(patient: Client, observations: Observation[]) 
     ["Jantar", patientClinicalField(patient, "dinner", "Jantar") || "não informado"],
     ["Ceia", patientClinicalField(patient, "supper", "Ceia") || "não informado"],
     ["Fim de semana", patientClinicalField(patient, "weekendEating", "Fim de semana") || "não informado"],
+    ...RECORD_FIELDS.map(([key, label]) => [label, patientClinicalField(patient, key, label) || "não informado"]),
   ];
   const observationLines = observations.flatMap((item) => [
     `${new Date(item.created_at).toLocaleDateString("pt-BR")} - ${item.category}`,
@@ -523,6 +660,7 @@ export default function Page() {
 
   const [newClient, setNewClient] = useState<ClientFormValue>(clientToFormValue(null));
   const [editClient, setEditClient] = useState<ClientFormValue>(clientToFormValue(null));
+  const [recordDraft, setRecordDraft] = useState<ClinicalProfile>({});
 
   const selectedClient = clients.find((client) => client.id === selectedClientId) || null;
   const filteredClients = clients.filter((client) =>
@@ -570,6 +708,12 @@ export default function Page() {
 
   useEffect(() => {
     setEditClient(clientToFormValue(selectedClient));
+    setRecordDraft({
+      ...(selectedClient?.clinical_profile || {}),
+      contact: selectedClient?.clinical_profile?.contact || selectedClient?.phone || "",
+      income: selectedClient?.clinical_profile?.income || selectedClient?.clinical_profile?.socioeconomic || "",
+      laborActivities: selectedClient?.clinical_profile?.laborActivities || selectedClient?.clinical_profile?.routine || "",
+    });
   }, [selectedClientId, selectedClient?.updated_at]);
 
   async function refreshWorkspace(token: string) {
@@ -679,6 +823,24 @@ export default function Page() {
     });
     await refreshWorkspace(accessToken);
     setClientTab("record");
+  }
+
+  async function updateProntuario() {
+    if (!accessToken || !selectedClientId || !editClient.fullName.trim()) return;
+    const basePayload = buildPatientPayload(editClient);
+    await api(`/api/patients/${selectedClientId}`, accessToken, {
+      method: "PATCH",
+      body: JSON.stringify({
+        ...basePayload,
+        clinicalProfile: {
+          ...(basePayload.clinicalProfile || {}),
+          ...recordDraft,
+        },
+      }),
+    });
+    await refreshWorkspace(accessToken);
+    await loadClientContext(selectedClientId);
+    setClientTab("prontuario");
   }
 
   async function deleteClient() {
@@ -1208,12 +1370,18 @@ export default function Page() {
                 <div className="record-actions">
                   <div>
                     <h2>Prontuário de {selectedClient.full_name}</h2>
-                    <p>Rascunho estruturado a partir do cadastro, rotina alimentar e evoluções registradas.</p>
+                    <p>Preencha os campos do modelo de prontuário e salve para usar no chat, na prévia e no PDF.</p>
                   </div>
-                  <button className="primary-action" onClick={() => downloadPatientRecordPdf(selectedClient, observations)}>
-                    Baixar prontuário PDF
-                  </button>
+                  <div className="record-button-row">
+                    <button className="primary-action" onClick={() => updateProntuario().catch(() => void 0)}>
+                      Salvar prontuário
+                    </button>
+                    <button className="mini-action" onClick={() => downloadPatientRecordPdf(selectedClient, observations)}>
+                      Baixar PDF
+                    </button>
+                  </div>
                 </div>
+                <PatientRecordForm value={recordDraft} onChange={setRecordDraft} />
                 <PatientRecordPreview client={selectedClient} observations={observations} />
               </section>
             )}
@@ -1358,40 +1526,60 @@ function EvidencePreview({ evidence }: { evidence: Evidence[] }) {
   );
 }
 
+function PatientRecordForm({
+  value,
+  onChange,
+}: {
+  value: ClinicalProfile;
+  onChange: (value: ClinicalProfile) => void;
+}) {
+  function updateField(key: string, nextValue: string) {
+    onChange({ ...value, [key]: nextValue });
+  }
+
+  return (
+    <div className="record-form">
+      {RECORD_SECTIONS.map((section) => (
+        <section key={section.title} className="record-form-section">
+          <div className="form-section-title">
+            <strong>{section.title}</strong>
+            <span>Campos equivalentes ao prontuário em PDF.</span>
+          </div>
+          <div className="client-form">
+            {section.fields.map(([key, label]) => (
+              <label key={key} className={RECORD_TEXTAREA_KEYS.has(key) ? "wide" : undefined}>
+                {label}
+                {RECORD_TEXTAREA_KEYS.has(key) ? (
+                  <textarea value={valueFromRecordDraft(value, key)} onChange={(event) => updateField(key, event.target.value)} />
+                ) : (
+                  <input value={valueFromRecordDraft(value, key)} onChange={(event) => updateField(key, event.target.value)} />
+                )}
+              </label>
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
 function PatientRecordPreview({ client, observations }: { client: Client; observations: Observation[] }) {
   const recordSections = [
     {
-      title: "Identificação",
+      title: "Dados principais do cadastro",
       rows: [
         ["Nome completo", client.full_name],
         ["Nascimento", client.birth_date || "Não informado"],
         ["Contato", client.phone || "Não informado"],
         ["Email", client.email || "Não informado"],
         ["Objetivo", client.objective || "Não informado"],
+        ["IMC calculado", patientClinicalField(client, "bmi", "IMC calculado") || "Não informado"],
       ],
     },
-    {
-      title: "Avaliação antropométrica",
-      rows: [
-        ["Sexo", patientClinicalField(client, "sex", "Sexo") || "Não informado"],
-        ["Peso", patientClinicalField(client, "weightKg", "Peso") || "Não informado"],
-        ["Altura", patientClinicalField(client, "heightCm", "Altura") || "Não informado"],
-        ["IMC", patientClinicalField(client, "bmi", "IMC calculado") || "Não informado"],
-        ["Cintura", patientClinicalField(client, "waistCm", "Cintura") || "Não informado"],
-        ["Quadril", patientClinicalField(client, "hipCm", "Quadril") || "Não informado"],
-      ],
-    },
-    {
-      title: "Contexto clínico e social",
-      rows: [
-        ["Condição socioeconômica", patientClinicalField(client, "socioeconomic", "Condição socioeconômica") || "Não informado"],
-        ["Rotina", patientClinicalField(client, "routine", "Rotina") || "Não informado"],
-        ["Patologias", patientClinicalField(client, "pathologies", "Patologias") || "Não informado"],
-        ["Medicamentos", patientClinicalField(client, "medications", "Medicamentos") || "Não informado"],
-        ["Alergias", patientClinicalField(client, "allergies", "Alergias") || "Não informado"],
-        ["Restrições", patientClinicalField(client, "restrictions", "Restrições") || "Não informado"],
-      ],
-    },
+    ...RECORD_SECTIONS.map((section) => ({
+      title: section.title,
+      rows: section.fields.map(([key, label]) => [label, patientClinicalField(client, key, label) || "Não informado"]),
+    })),
     {
       title: "Rotina alimentar",
       rows: [
