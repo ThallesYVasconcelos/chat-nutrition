@@ -15,17 +15,33 @@ export async function POST(request: NextRequest) {
     const user = await requireAppUser();
     const payload = schema.parse(await request.json());
     const evidence = await searchEvidence(`${payload.topic}. ${payload.question}`);
-    const answer = await generateProfessionalRecommendation({
+    let answer = await generateProfessionalRecommendation({
       topic: payload.topic,
       question: payload.question,
       evidence,
     });
-    const judge = await judgeResponse({
+    let judge = await judgeResponse({
       mode: "professional_recommendation",
       userMessage: payload.question,
       answer,
       evidence,
     });
+    let refinementCount = 0;
+    while ((!judge.passed || judge.score < 0.78) && refinementCount < 2) {
+      refinementCount += 1;
+      answer = await generateProfessionalRecommendation({
+        topic: payload.topic,
+        question: payload.question,
+        evidence,
+        qualityFeedback: judge,
+      });
+      judge = await judgeResponse({
+        mode: "professional_recommendation",
+        userMessage: payload.question,
+        answer,
+        evidence,
+      });
+    }
 
     let threadId = payload.threadId || "";
     if (!threadId) {
@@ -66,7 +82,7 @@ export async function POST(request: NextRequest) {
         user.id,
         answer,
         JSON.stringify(evidencePayload),
-        JSON.stringify({ topic: payload.topic, judge }),
+        JSON.stringify({ topic: payload.topic, judge, refinementCount }),
       ]
     );
 

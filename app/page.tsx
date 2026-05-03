@@ -48,7 +48,13 @@ type ClientFormValue = {
   budget: string;
   mealsPerDay: string;
   routine: string;
-  preferences: string;
+  breakfast: string;
+  morningSnack: string;
+  lunch: string;
+  afternoonSnack: string;
+  dinner: string;
+  supper: string;
+  weekendEating: string;
   restrictions: string;
   allergies: string;
   pathologies: string;
@@ -134,6 +140,17 @@ function isConsolidatedMealPlan(content: string): boolean {
   return hasPlanLanguage && hasValidationLanguage;
 }
 
+function structuredField(notes: string | null | undefined, label: string): string {
+  if (!notes) return "";
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = notes.match(new RegExp(`- ${escaped}:\\s*([^\\n]+)`, "i"));
+  return match?.[1]?.trim() || "";
+}
+
+function baseNotes(notes: string | null | undefined): string {
+  return (notes || "").split(/\n\nDados cl[íi]nicos estruturados para o chat:/i)[0]?.trim() || "";
+}
+
 function clientToFormValue(client: Client | null): ClientFormValue {
   return {
     fullName: client?.full_name || "",
@@ -141,21 +158,27 @@ function clientToFormValue(client: Client | null): ClientFormValue {
     phone: client?.phone || "",
     email: client?.email || "",
     objective: client?.objective || "",
-    notes: client?.notes || "",
-    sex: "",
-    weightKg: "",
-    heightCm: "",
-    waistCm: "",
-    hipCm: "",
-    socioeconomic: "",
-    budget: "",
-    mealsPerDay: "",
-    routine: "",
-    preferences: "",
-    restrictions: "",
-    allergies: "",
-    pathologies: "",
-    medications: "",
+    notes: baseNotes(client?.notes),
+    sex: structuredField(client?.notes, "Sexo"),
+    weightKg: structuredField(client?.notes, "Peso").replace(/\s*kg$/i, ""),
+    heightCm: structuredField(client?.notes, "Altura").replace(/\s*(cm|m)$/i, ""),
+    waistCm: structuredField(client?.notes, "Cintura").replace(/\s*cm$/i, ""),
+    hipCm: structuredField(client?.notes, "Quadril").replace(/\s*cm$/i, ""),
+    socioeconomic: structuredField(client?.notes, "Condição socioeconômica"),
+    budget: structuredField(client?.notes, "Orçamento alimentar"),
+    mealsPerDay: structuredField(client?.notes, "Refeições por dia"),
+    routine: structuredField(client?.notes, "Rotina"),
+    breakfast: structuredField(client?.notes, "Café da manhã"),
+    morningSnack: structuredField(client?.notes, "Lanche da manhã"),
+    lunch: structuredField(client?.notes, "Almoço"),
+    afternoonSnack: structuredField(client?.notes, "Lanche da tarde"),
+    dinner: structuredField(client?.notes, "Jantar"),
+    supper: structuredField(client?.notes, "Ceia"),
+    weekendEating: structuredField(client?.notes, "Fim de semana"),
+    restrictions: structuredField(client?.notes, "Restrições"),
+    allergies: structuredField(client?.notes, "Alergias"),
+    pathologies: structuredField(client?.notes, "Patologias"),
+    medications: structuredField(client?.notes, "Medicamentos"),
   };
 }
 
@@ -191,7 +214,13 @@ function buildPatientPayload(value: ClientFormValue) {
     ["Orçamento alimentar", value.budget],
     ["Refeições por dia", value.mealsPerDay],
     ["Rotina", value.routine],
-    ["Preferências alimentares", value.preferences],
+    ["Café da manhã", value.breakfast],
+    ["Lanche da manhã", value.morningSnack],
+    ["Almoço", value.lunch],
+    ["Lanche da tarde", value.afternoonSnack],
+    ["Jantar", value.dinner],
+    ["Ceia", value.supper],
+    ["Fim de semana", value.weekendEating],
     ["Restrições", value.restrictions],
     ["Alergias", value.allergies],
     ["Patologias", value.pathologies],
@@ -336,6 +365,64 @@ function downloadMealPlanPdf(input: { patient: Client; content: string; evidence
   URL.revokeObjectURL(link.href);
 }
 
+function downloadPatientRecordPdf(patient: Client, observations: Observation[]) {
+  const date = new Date().toLocaleDateString("pt-BR");
+  const fields = [
+    ["Data do atendimento", date],
+    ["Nome completo", patient.full_name],
+    ["Data de nascimento", patient.birth_date || "não informado"],
+    ["Contato", patient.phone || "não informado"],
+    ["Email", patient.email || "não informado"],
+    ["Objetivo do paciente", patient.objective || "não informado"],
+    ["Renda média / condição socioeconômica", structuredField(patient.notes, "Condição socioeconômica") || "não informado"],
+    ["Atividades laborais / rotina", structuredField(patient.notes, "Rotina") || "não informado"],
+    ["Sexo", structuredField(patient.notes, "Sexo") || "não informado"],
+    ["Peso", structuredField(patient.notes, "Peso") || "não informado"],
+    ["Altura", structuredField(patient.notes, "Altura") || "não informado"],
+    ["IMC calculado", structuredField(patient.notes, "IMC calculado") || "não informado"],
+    ["Circunferência da cintura", structuredField(patient.notes, "Cintura") || "não informado"],
+    ["Circunferência do quadril", structuredField(patient.notes, "Quadril") || "não informado"],
+    ["Doenças diagnosticadas", structuredField(patient.notes, "Patologias") || "não informado"],
+    ["Medicamentos / suplementos atuais", structuredField(patient.notes, "Medicamentos") || "não informado"],
+    ["Restrições e aversões", structuredField(patient.notes, "Restrições") || "não informado"],
+    ["Alergias", structuredField(patient.notes, "Alergias") || "não informado"],
+    ["Café da manhã", structuredField(patient.notes, "Café da manhã") || "não informado"],
+    ["Lanche da manhã", structuredField(patient.notes, "Lanche da manhã") || "não informado"],
+    ["Almoço", structuredField(patient.notes, "Almoço") || "não informado"],
+    ["Lanche da tarde", structuredField(patient.notes, "Lanche da tarde") || "não informado"],
+    ["Jantar", structuredField(patient.notes, "Jantar") || "não informado"],
+    ["Ceia", structuredField(patient.notes, "Ceia") || "não informado"],
+    ["Fim de semana", structuredField(patient.notes, "Fim de semana") || "não informado"],
+  ];
+  const observationLines = observations.flatMap((item) => [
+    `${new Date(item.created_at).toLocaleDateString("pt-BR")} - ${item.category}`,
+    ...wrapPdfLine(item.note),
+    "",
+  ]);
+  const lines = [
+    "Prato Clínico - Prontuário do paciente",
+    "Modelo compatível com identificação, antropometria, histórico clínico, rotina alimentar e evolução.",
+    "",
+    "Identificação e contexto",
+    "",
+    ...fields.flatMap(([label, value]) => [`${label}:`, ...wrapPdfLine(value), ""]),
+    "Resumo inicial",
+    "",
+    ...wrapPdfLine(baseNotes(patient.notes) || "Sem resumo inicial registrado."),
+    "",
+    "Evolução do acompanhamento nutricional",
+    "",
+    ...(observationLines.length ? observationLines : ["Sem evoluções registradas."]),
+  ];
+  const blob = buildPdfBlob(lines);
+  const link = document.createElement("a");
+  const filename = `prontuario-${patient.full_name.toLowerCase().replace(/[^a-z0-9]+/gi, "-")}.pdf`;
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
 async function api<T>(path: string, token: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
@@ -377,7 +464,7 @@ export default function Page() {
   const [view, setView] = useState<"dashboard" | "plan" | "recommendations" | "patients" | "sources">("dashboard");
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientId, setSelectedClientId] = useState("");
-  const [clientTab, setClientTab] = useState<"chat" | "record" | "notes">("chat");
+  const [clientTab, setClientTab] = useState<"chat" | "record" | "prontuario" | "notes">("chat");
   const [observations, setObservations] = useState<Observation[]>([]);
   const [threads, setThreads] = useState<Thread[]>([]);
   const [threadId, setThreadId] = useState("");
@@ -803,7 +890,6 @@ export default function Page() {
                       <article key={index} className={message.role === "user" ? "message user" : "message assistant"}>
                         <div className="message-label">{message.role === "user" ? "Profissional" : "Prato Clínico"}</div>
                         <div className="message-content">{cleanAssistantText(message.content)}</div>
-                        {message.role === "assistant" && message.judge && <JudgeBadge judge={message.judge} />}
                         {message.role === "assistant" && message.evidence && message.evidence.length > 0 && (
                           <EvidencePreview evidence={message.evidence} />
                         )}
@@ -924,7 +1010,6 @@ export default function Page() {
                     <article key={index} className={message.role === "user" ? "message user" : "message assistant"}>
                       <div className="message-label">{message.role === "user" ? "Profissional" : "Prato Clínico"}</div>
                       <div className="message-content">{cleanAssistantText(message.content)}</div>
-                      {message.role === "assistant" && message.judge && <JudgeBadge judge={message.judge} />}
                       {message.role === "assistant" && message.evidence && message.evidence.length > 0 && (
                         <EvidencePreview evidence={message.evidence} />
                       )}
@@ -1008,6 +1093,15 @@ export default function Page() {
                       Perfil
                     </button>
                     <button
+                      className="secondary-action"
+                      onClick={() => {
+                        setSelectedClientId(client.id);
+                        setClientTab("prontuario");
+                      }}
+                    >
+                      Prontuário
+                    </button>
+                    <button
                       className="primary-action"
                       onClick={() => openPatientChat(client.id).catch(() => void 0)}
                     >
@@ -1038,6 +1132,21 @@ export default function Page() {
                     Fechar
                   </button>
                 </div>
+              </section>
+            )}
+
+            {selectedClient && clientTab === "prontuario" && (
+              <section className="client-record inline-editor">
+                <div className="record-actions">
+                  <div>
+                    <h2>Prontuário de {selectedClient.full_name}</h2>
+                    <p>Rascunho estruturado a partir do cadastro, rotina alimentar e evoluções registradas.</p>
+                  </div>
+                  <button className="primary-action" onClick={() => downloadPatientRecordPdf(selectedClient, observations)}>
+                    Baixar prontuário PDF
+                  </button>
+                </div>
+                <PatientRecordPreview client={selectedClient} observations={observations} />
               </section>
             )}
           </section>
@@ -1181,6 +1290,89 @@ function EvidencePreview({ evidence }: { evidence: Evidence[] }) {
   );
 }
 
+function PatientRecordPreview({ client, observations }: { client: Client; observations: Observation[] }) {
+  const recordSections = [
+    {
+      title: "Identificação",
+      rows: [
+        ["Nome completo", client.full_name],
+        ["Nascimento", client.birth_date || "Não informado"],
+        ["Contato", client.phone || "Não informado"],
+        ["Email", client.email || "Não informado"],
+        ["Objetivo", client.objective || "Não informado"],
+      ],
+    },
+    {
+      title: "Avaliação antropométrica",
+      rows: [
+        ["Sexo", structuredField(client.notes, "Sexo") || "Não informado"],
+        ["Peso", structuredField(client.notes, "Peso") || "Não informado"],
+        ["Altura", structuredField(client.notes, "Altura") || "Não informado"],
+        ["IMC", structuredField(client.notes, "IMC calculado") || "Não informado"],
+        ["Cintura", structuredField(client.notes, "Cintura") || "Não informado"],
+        ["Quadril", structuredField(client.notes, "Quadril") || "Não informado"],
+      ],
+    },
+    {
+      title: "Contexto clínico e social",
+      rows: [
+        ["Condição socioeconômica", structuredField(client.notes, "Condição socioeconômica") || "Não informado"],
+        ["Rotina", structuredField(client.notes, "Rotina") || "Não informado"],
+        ["Patologias", structuredField(client.notes, "Patologias") || "Não informado"],
+        ["Medicamentos", structuredField(client.notes, "Medicamentos") || "Não informado"],
+        ["Alergias", structuredField(client.notes, "Alergias") || "Não informado"],
+        ["Restrições", structuredField(client.notes, "Restrições") || "Não informado"],
+      ],
+    },
+    {
+      title: "Rotina alimentar",
+      rows: [
+        ["Café da manhã", structuredField(client.notes, "Café da manhã") || "Não informado"],
+        ["Lanche da manhã", structuredField(client.notes, "Lanche da manhã") || "Não informado"],
+        ["Almoço", structuredField(client.notes, "Almoço") || "Não informado"],
+        ["Lanche da tarde", structuredField(client.notes, "Lanche da tarde") || "Não informado"],
+        ["Jantar", structuredField(client.notes, "Jantar") || "Não informado"],
+        ["Ceia", structuredField(client.notes, "Ceia") || "Não informado"],
+        ["Fim de semana", structuredField(client.notes, "Fim de semana") || "Não informado"],
+      ],
+    },
+  ];
+
+  return (
+    <div className="record-preview">
+      {recordSections.map((section) => (
+        <article key={section.title}>
+          <h3>{section.title}</h3>
+          <dl>
+            {section.rows.map(([label, value]) => (
+              <div key={label}>
+                <dt>{label}</dt>
+                <dd>{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </article>
+      ))}
+      <article className="wide">
+        <h3>Evolução do acompanhamento</h3>
+        {observations.length ? (
+          <div className="notes-list compact">
+            {observations.map((item) => (
+              <section key={item.id}>
+                <strong>{item.category}</strong>
+                <small>{new Date(item.created_at).toLocaleDateString("pt-BR")}</small>
+                <p>{item.note}</p>
+              </section>
+            ))}
+          </div>
+        ) : (
+          <p className="muted-text">Sem evoluções registradas.</p>
+        )}
+      </article>
+    </div>
+  );
+}
+
 function ClientForm({
   value,
   onChange,
@@ -1264,9 +1456,37 @@ function ClientForm({
         Rotina
         <input value={value.routine} onChange={(event) => onChange({ ...value, routine: event.target.value })} />
       </label>
+      <div className="form-section-title">
+        <strong>Rotina alimentar por momento</strong>
+        <span>Preencha por refeição para evitar perguntas amplas no chat.</span>
+      </div>
+      <label>
+        Café da manhã
+        <input value={value.breakfast} onChange={(event) => onChange({ ...value, breakfast: event.target.value })} />
+      </label>
+      <label>
+        Lanche da manhã
+        <input value={value.morningSnack} onChange={(event) => onChange({ ...value, morningSnack: event.target.value })} />
+      </label>
+      <label>
+        Almoço
+        <input value={value.lunch} onChange={(event) => onChange({ ...value, lunch: event.target.value })} />
+      </label>
+      <label>
+        Lanche da tarde
+        <input value={value.afternoonSnack} onChange={(event) => onChange({ ...value, afternoonSnack: event.target.value })} />
+      </label>
+      <label>
+        Jantar
+        <input value={value.dinner} onChange={(event) => onChange({ ...value, dinner: event.target.value })} />
+      </label>
+      <label>
+        Ceia
+        <input value={value.supper} onChange={(event) => onChange({ ...value, supper: event.target.value })} />
+      </label>
       <label className="wide">
-        Preferências alimentares
-        <input value={value.preferences} onChange={(event) => onChange({ ...value, preferences: event.target.value })} />
+        Fim de semana
+        <input value={value.weekendEating} onChange={(event) => onChange({ ...value, weekendEating: event.target.value })} />
       </label>
       <label className="wide">
         Restrições e aversões

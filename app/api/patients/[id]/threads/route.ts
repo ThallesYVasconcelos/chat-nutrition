@@ -119,7 +119,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       similarity: item.similarity,
       excerpt: item.body.slice(0, 700),
     }));
-    const answer = await generateMealPlanGuidance({
+    let answer = await generateMealPlanGuidance({
       clientName: patient?.full_name,
       clientObjective: patient?.objective,
       clientNotes: patientNotes,
@@ -127,13 +127,33 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       conversationHistory,
       evidence,
     });
-    const judge = await judgeResponse({
+    let judge = await judgeResponse({
       mode: "meal_plan",
       userMessage: payload.message,
       answer,
       conversationHistory,
       evidence,
     });
+    let refinementCount = 0;
+    while ((!judge.passed || judge.score < 0.78) && refinementCount < 2) {
+      refinementCount += 1;
+      answer = await generateMealPlanGuidance({
+        clientName: patient?.full_name,
+        clientObjective: patient?.objective,
+        clientNotes: patientNotes,
+        message: payload.message,
+        conversationHistory,
+        evidence,
+        qualityFeedback: judge,
+      });
+      judge = await judgeResponse({
+        mode: "meal_plan",
+        userMessage: payload.message,
+        answer,
+        conversationHistory,
+        evidence,
+      });
+    }
 
     await sql(
       `
@@ -145,7 +165,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         user.id,
         answer,
         JSON.stringify(evidencePayload),
-        JSON.stringify({ kind: "patient_chat_response", judge }),
+        JSON.stringify({ kind: "patient_chat_response", judge, refinementCount }),
       ]
     );
 

@@ -127,6 +127,7 @@ export async function generateProfessionalRecommendation(input: {
   topic: string;
   question: string;
   evidence: EvidenceDoc[];
+  qualityFeedback?: ResponseJudge | null;
 }): Promise<string> {
   const evidenceText = input.evidence
     .slice(0, 6)
@@ -144,7 +145,11 @@ export async function generateProfessionalRecommendation(input: {
     },
     {
       role: "user",
-      content: `Tema: ${input.topic}\nPergunta: ${input.question}\n\nEvidências:\n${evidenceText}\n\nProduza: resumo clínico, recomendações práticas, alertas e lacunas.`,
+      content: `Tema: ${input.topic}\nPergunta: ${input.question}\n\nEvidências:\n${evidenceText}\n\n${
+        input.qualityFeedback
+          ? `Correção interna obrigatória antes de responder:\nProblemas: ${input.qualityFeedback.issues.join("; ") || "não informado"}\nLacunas: ${input.qualityFeedback.missing.join("; ") || "não informado"}\nRecomendação do avaliador: ${input.qualityFeedback.recommendation || "melhore completude, segurança e citações"}\n\n`
+          : ""
+      }Produza: resumo clínico, recomendações práticas, alertas e lacunas.`,
     },
   ];
 
@@ -172,6 +177,7 @@ export async function generateMealPlanGuidance(input: {
   message: string;
   conversationHistory?: string;
   evidence: EvidenceDoc[];
+  qualityFeedback?: ResponseJudge | null;
 }): Promise<string> {
   const evidenceText = input.evidence
     .slice(0, 6)
@@ -185,7 +191,7 @@ export async function generateMealPlanGuidance(input: {
     {
       role: "system",
       content:
-        "Você é um assistente de apoio a nutricionistas para construir plano alimentar em formato ping-pong. Use os dados do cadastro do cliente e o histórico da conversa como fonte principal de contexto. Considere como já informados todos os dados presentes no cadastro, incluindo idade/data de nascimento, sexo, peso, altura, IMC, medidas, objetivo, rotina, refeições por dia, orçamento, preferências, restrições, alergias, patologias, medicamentos e condição socioeconômica. Se o profissional responder apenas um número ou frase curta, interprete como resposta à última pergunta feita. Nunca repita uma pergunta que já foi respondida no cadastro ou no histórico. Não repita o plano completo a cada mensagem. Quando o plano já tiver sido gerado e o profissional pedir ajuste, semana, horários, atividade física ou mudança de hábitos, responda apenas com a atualização incremental e como ela se encaixa no plano. Se o profissional disser que o paciente quer mudar hábitos, avance para estratégia comportamental e metas pequenas, sem perguntar novamente alimentos já descritos. Faça uma pergunta por vez quando faltar dado realmente essencial. Antes de fechar um plano, verifique idade, sexo, altura, peso, medidas, objetivo, rotina, refeições por dia, orçamento, preferências, restrições, alergias, patologias e medicamentos. Se já houver dados suficientes, gere um rascunho de plano alimentar revisável pelo nutricionista. Toda afirmação baseada em documento deve citar [F1], [F2] etc. Não invente fonte, não substitua conduta clínica e não use asteriscos para negrito.",
+        "Você é um assistente de apoio a nutricionistas para construir plano alimentar em formato ping-pong. Use os dados do cadastro do cliente e o histórico da conversa como fonte principal de contexto. Considere como já informados todos os dados presentes no cadastro, incluindo idade/data de nascimento, sexo, peso, altura, IMC, medidas, objetivo, rotina, refeições por dia, orçamento, rotina alimentar por refeição, restrições, alergias, patologias, medicamentos e condição socioeconômica. Se o profissional responder apenas um número ou frase curta, interprete como resposta à última pergunta feita. Nunca repita uma pergunta que já foi respondida no cadastro ou no histórico. Não repita o plano completo a cada mensagem. Quando o plano já tiver sido gerado e o profissional pedir ajuste, semana, horários, atividade física ou mudança de hábitos, responda apenas com a atualização incremental e como ela se encaixa no plano. Se o profissional disser que o paciente quer mudar hábitos, avance para estratégia comportamental e metas pequenas, sem perguntar novamente alimentos já descritos. Faça uma pergunta por vez quando faltar dado realmente essencial. Quando perguntar rotina alimentar, divida por momentos: café da manhã, lanche da manhã, almoço, lanche da tarde, jantar, ceia e fim de semana. Antes de fechar um plano, verifique idade, sexo, altura, peso, medidas, objetivo, rotina, refeições por dia, orçamento, rotina alimentar, restrições, alergias, patologias e medicamentos. Se já houver dados suficientes, gere um rascunho de plano alimentar revisável pelo nutricionista. Em plano consolidado, cada refeição deve trazer quantidades em gramas/ml ou medidas caseiras e pelo menos três opções/substituições equivalentes quando isso for clinicamente possível. Toda afirmação baseada em documento deve citar [F1], [F2] etc. Não invente fonte, não substitua conduta clínica e não use asteriscos para negrito.",
     },
     {
       role: "user",
@@ -195,7 +201,11 @@ export async function generateMealPlanGuidance(input: {
         input.conversationHistory || "sem histórico"
       }\n\nMensagem atual:\n${
         input.message
-      }\n\nEvidências recuperadas:\n${evidenceText}\n\nResponda de forma objetiva. Primeiro use os dados já informados no cadastro e no histórico. Se já existe um plano no histórico, não reescreva a síntese, estrutura, substituições e lista de compras; responda apenas ao ajuste solicitado. Se o pedido for semanal, transforme o plano em uma rotina semanal simples. Se o usuário trouxer intenção de mudança de hábitos, proponha um próximo passo prático e pergunte somente um detalhe comportamental que ainda não esteja no cadastro. Se faltam dados essenciais, pergunte somente o próximo dado mais importante. Se os dados forem suficientes e ainda não existir plano no histórico, organize: síntese do caso, alertas, estrutura alimentar por refeições, substituições econômicas, lista de compras e pontos para validação profissional.`,
+      }\n\nEvidências recuperadas:\n${evidenceText}\n\n${
+        input.qualityFeedback
+          ? `Correção interna obrigatória antes de responder:\nProblemas: ${input.qualityFeedback.issues.join("; ") || "não informado"}\nLacunas: ${input.qualityFeedback.missing.join("; ") || "não informado"}\nRecomendação do avaliador: ${input.qualityFeedback.recommendation || "melhore completude e segurança"}\n\n`
+          : ""
+      }Responda de forma objetiva. Primeiro use os dados já informados no cadastro e no histórico. Se já existe um plano no histórico, não reescreva a síntese, estrutura, substituições e lista de compras; responda apenas ao ajuste solicitado. Se o pedido for semanal, transforme o plano em uma rotina semanal simples com opções por dia. Se o usuário trouxer intenção de mudança de hábitos, proponha um próximo passo prático e pergunte somente um detalhe comportamental que ainda não esteja no cadastro. Se faltam dados essenciais, pergunte somente o próximo dado mais importante; se a lacuna for hábito alimentar, pergunte por uma refeição ou momento por vez. Se os dados forem suficientes e ainda não existir plano no histórico, organize: síntese do caso, alertas, estrutura alimentar por refeições com quantidade e medida caseira, pelo menos três opções/substituições por refeição, substituições econômicas, lista de compras e pontos para validação profissional.`,
     },
   ];
 
@@ -226,7 +236,7 @@ export async function judgeResponse(input: {
   const evidenceIds = input.evidence.slice(0, 6).map((_, index) => `[F${index + 1}]`).join(", ");
   const rubric =
     input.mode === "meal_plan"
-      ? "Avalie se a resposta apoia a construção de plano alimentar em ping-pong: usa o histórico, não repete perguntas já respondidas, interpreta respostas curtas conforme a última pergunta, pergunta uma coisa por vez quando faltam dados essenciais, não fecha plano sem contexto suficiente, considera segurança clínica, orçamento, rotina, restrições, alergias, patologias, medicamentos e cita fontes quando usa evidência. Use passed=true quando a próxima pergunta for adequada e não repetida, ou quando o plano consolidado estiver completo."
+      ? "Avalie se a resposta apoia a construção de plano alimentar em ping-pong: usa o histórico, não repete perguntas já respondidas, interpreta respostas curtas conforme a última pergunta, pergunta uma coisa por vez quando faltam dados essenciais, divide hábitos alimentares por refeições/momentos quando o pedido for amplo, não fecha plano sem contexto suficiente, considera segurança clínica, orçamento, rotina, restrições, alergias, patologias, medicamentos e cita fontes quando usa evidência. Quando houver plano consolidado, avalie se há quantidades em gramas/ml ou medidas caseiras e pelo menos três opções/substituições por refeição quando clinicamente possível. Use passed=true quando a próxima pergunta for adequada e não repetida, ou quando o plano consolidado estiver completo."
       : "Avalie se a resposta profissional está completa: responde a pergunta, cita fontes quando usa evidência, aponta limites/lacunas, não inventa condutas e mantém segurança clínica.";
 
   const messages = [
@@ -283,6 +293,16 @@ export async function judgeResponse(input: {
     const essential = ["idade", "altura", "peso", "rotina", "orçamento"];
     for (const item of essential) {
       if (!new RegExp(item, "i").test(input.userMessage + input.answer)) missing.push(item);
+    }
+  }
+  if (input.mode === "meal_plan" && /plano alimentar|cardápio|estrutura alimentar/i.test(input.answer)) {
+    if (!/\b(g|kg|ml|colher|xícara|fatia|unidade|porção de \d)/i.test(input.answer)) {
+      issues.push("O plano não trouxe quantidades ou medidas caseiras.");
+      missing.push("quantidades por refeição");
+    }
+    if (!/opção\s*1|1\./i.test(input.answer) || !/opção\s*2|2\./i.test(input.answer) || !/opção\s*3|3\./i.test(input.answer)) {
+      issues.push("O plano não trouxe três opções/substituições de forma clara.");
+      missing.push("três opções por refeição");
     }
   }
   return {

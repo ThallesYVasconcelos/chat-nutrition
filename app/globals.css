@@ -1233,7 +1233,7 @@ button {
 
 .patient-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -1406,10 +1406,72 @@ button {
   gap: 10px;
 }
 
+.record-preview {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.record-preview article {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  padding: 14px;
+}
+
+.record-preview .wide {
+  grid-column: 1 / -1;
+}
+
+.record-preview h3 {
+  margin: 0 0 12px;
+  font-size: 1rem;
+}
+
+.record-preview dl {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.record-preview dt {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.record-preview dd {
+  margin: 3px 0 0;
+  color: var(--text);
+}
+
+.muted-text {
+  color: var(--muted);
+}
+
 .notes-list {
   display: grid;
   gap: 10px;
   margin-top: 14px;
+}
+
+.notes-list.compact {
+  margin-top: 0;
+}
+
+.notes-list.compact section {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--surface-2);
+}
+
+.notes-list.compact small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
 }
 
 .notes-list article,
@@ -1638,6 +1700,8 @@ button {
   .client-form,
   .details-grid,
   .patient-grid,
+  .patient-actions,
+  .record-preview,
   .source-grid {
     grid-template-columns: 1fr;
   }
