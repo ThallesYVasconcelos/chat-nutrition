@@ -1351,6 +1351,13 @@ button {
   margin-top: 14px;
 }
 
+.record-button-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .danger-action {
   border: 1px solid #f0c8c8;
   background: #fff7f5;
@@ -1401,6 +1408,21 @@ button {
 .note-form textarea {
   min-height: 120px;
   resize: vertical;
+}
+
+.record-form {
+  display: grid;
+  gap: 18px;
+  margin-bottom: 20px;
+}
+
+.record-form-section {
+  display: grid;
+  gap: 12px;
+}
+
+.record-form .form-section-title {
+  margin-top: 0;
 }
 
 .segmented {

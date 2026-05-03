@@ -1,4 +1,4 @@
-export type ClinicalProfile = {
+export type ClinicalProfile = Record<string, string | undefined> & {
   sex?: string;
   weightKg?: string;
   heightCm?: string;
@@ -61,6 +61,9 @@ export function normalizeClinicalProfile(value: unknown): ClinicalProfile {
   if (!value || typeof value !== "object") return {};
   const input = value as Record<string, unknown>;
   const output: ClinicalProfile = {};
+  for (const [key, raw] of Object.entries(input)) {
+    if (typeof raw === "string" && raw.trim()) output[key] = raw.trim();
+  }
   for (const key of Object.keys(noteLabels) as Array<keyof ClinicalProfile>) {
     const raw = input[key];
     if (typeof raw === "string" && raw.trim()) output[key] = raw.trim();
