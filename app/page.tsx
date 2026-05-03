@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { ClinicalProfile } from "@/lib/clinical-profile";
 
 type AppUser = { id: string; email: string; full_name: string | null; avatar_url?: string | null };
 type Evidence = { id: string; title: string; source: string; excerpt: string; similarity?: number | null };
@@ -28,10 +29,20 @@ type Client = {
   objective: string | null;
   notes: string | null;
   updated_at?: string;
+  clinical_profile?: ClinicalProfile | null;
 };
 type Observation = { id: string; category: string; note: string; created_at: string };
 type Thread = { id: string; title: string; updated_at: string };
 type ReferenceDocument = { title: string; source: string; chunks: string };
+type MealPlanArtifact = {
+  id: string;
+  title: string;
+  content: string;
+  evidence: Evidence[];
+  status: string;
+  version: number;
+  updated_at: string;
+};
 type ClientFormValue = {
   fullName: string;
   birthDate: string;
@@ -151,7 +162,12 @@ function baseNotes(notes: string | null | undefined): string {
   return (notes || "").split(/\n\nDados cl[íi]nicos estruturados para o chat:/i)[0]?.trim() || "";
 }
 
+function patientClinicalField(patient: Client, key: keyof ClinicalProfile, label: string): string {
+  return patient.clinical_profile?.[key] || structuredField(patient.notes, label);
+}
+
 function clientToFormValue(client: Client | null): ClientFormValue {
+  const profile = client?.clinical_profile || {};
   return {
     fullName: client?.full_name || "",
     birthDate: client?.birth_date || "",
@@ -159,26 +175,26 @@ function clientToFormValue(client: Client | null): ClientFormValue {
     email: client?.email || "",
     objective: client?.objective || "",
     notes: baseNotes(client?.notes),
-    sex: structuredField(client?.notes, "Sexo"),
-    weightKg: structuredField(client?.notes, "Peso").replace(/\s*kg$/i, ""),
-    heightCm: structuredField(client?.notes, "Altura").replace(/\s*(cm|m)$/i, ""),
-    waistCm: structuredField(client?.notes, "Cintura").replace(/\s*cm$/i, ""),
-    hipCm: structuredField(client?.notes, "Quadril").replace(/\s*cm$/i, ""),
-    socioeconomic: structuredField(client?.notes, "Condição socioeconômica"),
-    budget: structuredField(client?.notes, "Orçamento alimentar"),
-    mealsPerDay: structuredField(client?.notes, "Refeições por dia"),
-    routine: structuredField(client?.notes, "Rotina"),
-    breakfast: structuredField(client?.notes, "Café da manhã"),
-    morningSnack: structuredField(client?.notes, "Lanche da manhã"),
-    lunch: structuredField(client?.notes, "Almoço"),
-    afternoonSnack: structuredField(client?.notes, "Lanche da tarde"),
-    dinner: structuredField(client?.notes, "Jantar"),
-    supper: structuredField(client?.notes, "Ceia"),
-    weekendEating: structuredField(client?.notes, "Fim de semana"),
-    restrictions: structuredField(client?.notes, "Restrições"),
-    allergies: structuredField(client?.notes, "Alergias"),
-    pathologies: structuredField(client?.notes, "Patologias"),
-    medications: structuredField(client?.notes, "Medicamentos"),
+    sex: profile.sex || structuredField(client?.notes, "Sexo"),
+    weightKg: (profile.weightKg || structuredField(client?.notes, "Peso")).replace(/\s*kg$/i, ""),
+    heightCm: (profile.heightCm || structuredField(client?.notes, "Altura")).replace(/\s*(cm|m)$/i, ""),
+    waistCm: (profile.waistCm || structuredField(client?.notes, "Cintura")).replace(/\s*cm$/i, ""),
+    hipCm: (profile.hipCm || structuredField(client?.notes, "Quadril")).replace(/\s*cm$/i, ""),
+    socioeconomic: profile.socioeconomic || structuredField(client?.notes, "Condição socioeconômica"),
+    budget: profile.budget || structuredField(client?.notes, "Orçamento alimentar"),
+    mealsPerDay: profile.mealsPerDay || structuredField(client?.notes, "Refeições por dia"),
+    routine: profile.routine || structuredField(client?.notes, "Rotina"),
+    breakfast: profile.breakfast || structuredField(client?.notes, "Café da manhã"),
+    morningSnack: profile.morningSnack || structuredField(client?.notes, "Lanche da manhã"),
+    lunch: profile.lunch || structuredField(client?.notes, "Almoço"),
+    afternoonSnack: profile.afternoonSnack || structuredField(client?.notes, "Lanche da tarde"),
+    dinner: profile.dinner || structuredField(client?.notes, "Jantar"),
+    supper: profile.supper || structuredField(client?.notes, "Ceia"),
+    weekendEating: profile.weekendEating || structuredField(client?.notes, "Fim de semana"),
+    restrictions: profile.restrictions || structuredField(client?.notes, "Restrições"),
+    allergies: profile.allergies || structuredField(client?.notes, "Alergias"),
+    pathologies: profile.pathologies || structuredField(client?.notes, "Patologias"),
+    medications: profile.medications || structuredField(client?.notes, "Medicamentos"),
   };
 }
 
@@ -203,28 +219,51 @@ function normalizeBirthDate(value: string): string {
 
 function buildPatientPayload(value: ClientFormValue) {
   const bmi = calculateBmi(value.weightKg, value.heightCm);
+  const clinicalProfile: ClinicalProfile = {
+    sex: value.sex,
+    weightKg: value.weightKg ? `${value.weightKg} kg` : "",
+    heightCm: value.heightCm ? formatHeight(value.heightCm) : "",
+    bmi,
+    waistCm: value.waistCm ? `${value.waistCm} cm` : "",
+    hipCm: value.hipCm ? `${value.hipCm} cm` : "",
+    socioeconomic: value.socioeconomic,
+    budget: value.budget,
+    mealsPerDay: value.mealsPerDay,
+    routine: value.routine,
+    breakfast: value.breakfast,
+    morningSnack: value.morningSnack,
+    lunch: value.lunch,
+    afternoonSnack: value.afternoonSnack,
+    dinner: value.dinner,
+    supper: value.supper,
+    weekendEating: value.weekendEating,
+    restrictions: value.restrictions,
+    allergies: value.allergies,
+    pathologies: value.pathologies,
+    medications: value.medications,
+  };
   const clinicalRows = [
-    ["Sexo", value.sex],
-    ["Peso", value.weightKg ? `${value.weightKg} kg` : ""],
-    ["Altura", value.heightCm ? formatHeight(value.heightCm) : ""],
-    ["IMC calculado", bmi],
-    ["Cintura", value.waistCm ? `${value.waistCm} cm` : ""],
-    ["Quadril", value.hipCm ? `${value.hipCm} cm` : ""],
-    ["Condição socioeconômica", value.socioeconomic],
-    ["Orçamento alimentar", value.budget],
-    ["Refeições por dia", value.mealsPerDay],
-    ["Rotina", value.routine],
-    ["Café da manhã", value.breakfast],
-    ["Lanche da manhã", value.morningSnack],
-    ["Almoço", value.lunch],
-    ["Lanche da tarde", value.afternoonSnack],
-    ["Jantar", value.dinner],
-    ["Ceia", value.supper],
-    ["Fim de semana", value.weekendEating],
-    ["Restrições", value.restrictions],
-    ["Alergias", value.allergies],
-    ["Patologias", value.pathologies],
-    ["Medicamentos", value.medications],
+    ["Sexo", clinicalProfile.sex || ""],
+    ["Peso", clinicalProfile.weightKg || ""],
+    ["Altura", clinicalProfile.heightCm || ""],
+    ["IMC calculado", clinicalProfile.bmi || ""],
+    ["Cintura", clinicalProfile.waistCm || ""],
+    ["Quadril", clinicalProfile.hipCm || ""],
+    ["Condição socioeconômica", clinicalProfile.socioeconomic || ""],
+    ["Orçamento alimentar", clinicalProfile.budget || ""],
+    ["Refeições por dia", clinicalProfile.mealsPerDay || ""],
+    ["Rotina", clinicalProfile.routine || ""],
+    ["Café da manhã", clinicalProfile.breakfast || ""],
+    ["Lanche da manhã", clinicalProfile.morningSnack || ""],
+    ["Almoço", clinicalProfile.lunch || ""],
+    ["Lanche da tarde", clinicalProfile.afternoonSnack || ""],
+    ["Jantar", clinicalProfile.dinner || ""],
+    ["Ceia", clinicalProfile.supper || ""],
+    ["Fim de semana", clinicalProfile.weekendEating || ""],
+    ["Restrições", clinicalProfile.restrictions || ""],
+    ["Alergias", clinicalProfile.allergies || ""],
+    ["Patologias", clinicalProfile.pathologies || ""],
+    ["Medicamentos", clinicalProfile.medications || ""],
   ].filter(([, fieldValue]) => fieldValue.trim());
 
   const structuredNotes = clinicalRows.length
@@ -238,6 +277,7 @@ function buildPatientPayload(value: ClientFormValue) {
     email: value.email,
     objective: value.objective,
     notes: `${value.notes.trim()}${structuredNotes}`.trim(),
+    clinicalProfile,
   };
 }
 
@@ -374,25 +414,25 @@ function downloadPatientRecordPdf(patient: Client, observations: Observation[]) 
     ["Contato", patient.phone || "não informado"],
     ["Email", patient.email || "não informado"],
     ["Objetivo do paciente", patient.objective || "não informado"],
-    ["Renda média / condição socioeconômica", structuredField(patient.notes, "Condição socioeconômica") || "não informado"],
-    ["Atividades laborais / rotina", structuredField(patient.notes, "Rotina") || "não informado"],
-    ["Sexo", structuredField(patient.notes, "Sexo") || "não informado"],
-    ["Peso", structuredField(patient.notes, "Peso") || "não informado"],
-    ["Altura", structuredField(patient.notes, "Altura") || "não informado"],
-    ["IMC calculado", structuredField(patient.notes, "IMC calculado") || "não informado"],
-    ["Circunferência da cintura", structuredField(patient.notes, "Cintura") || "não informado"],
-    ["Circunferência do quadril", structuredField(patient.notes, "Quadril") || "não informado"],
-    ["Doenças diagnosticadas", structuredField(patient.notes, "Patologias") || "não informado"],
-    ["Medicamentos / suplementos atuais", structuredField(patient.notes, "Medicamentos") || "não informado"],
-    ["Restrições e aversões", structuredField(patient.notes, "Restrições") || "não informado"],
-    ["Alergias", structuredField(patient.notes, "Alergias") || "não informado"],
-    ["Café da manhã", structuredField(patient.notes, "Café da manhã") || "não informado"],
-    ["Lanche da manhã", structuredField(patient.notes, "Lanche da manhã") || "não informado"],
-    ["Almoço", structuredField(patient.notes, "Almoço") || "não informado"],
-    ["Lanche da tarde", structuredField(patient.notes, "Lanche da tarde") || "não informado"],
-    ["Jantar", structuredField(patient.notes, "Jantar") || "não informado"],
-    ["Ceia", structuredField(patient.notes, "Ceia") || "não informado"],
-    ["Fim de semana", structuredField(patient.notes, "Fim de semana") || "não informado"],
+    ["Renda média / condição socioeconômica", patientClinicalField(patient, "socioeconomic", "Condição socioeconômica") || "não informado"],
+    ["Atividades laborais / rotina", patientClinicalField(patient, "routine", "Rotina") || "não informado"],
+    ["Sexo", patientClinicalField(patient, "sex", "Sexo") || "não informado"],
+    ["Peso", patientClinicalField(patient, "weightKg", "Peso") || "não informado"],
+    ["Altura", patientClinicalField(patient, "heightCm", "Altura") || "não informado"],
+    ["IMC calculado", patientClinicalField(patient, "bmi", "IMC calculado") || "não informado"],
+    ["Circunferência da cintura", patientClinicalField(patient, "waistCm", "Cintura") || "não informado"],
+    ["Circunferência do quadril", patientClinicalField(patient, "hipCm", "Quadril") || "não informado"],
+    ["Doenças diagnosticadas", patientClinicalField(patient, "pathologies", "Patologias") || "não informado"],
+    ["Medicamentos / suplementos atuais", patientClinicalField(patient, "medications", "Medicamentos") || "não informado"],
+    ["Restrições e aversões", patientClinicalField(patient, "restrictions", "Restrições") || "não informado"],
+    ["Alergias", patientClinicalField(patient, "allergies", "Alergias") || "não informado"],
+    ["Café da manhã", patientClinicalField(patient, "breakfast", "Café da manhã") || "não informado"],
+    ["Lanche da manhã", patientClinicalField(patient, "morningSnack", "Lanche da manhã") || "não informado"],
+    ["Almoço", patientClinicalField(patient, "lunch", "Almoço") || "não informado"],
+    ["Lanche da tarde", patientClinicalField(patient, "afternoonSnack", "Lanche da tarde") || "não informado"],
+    ["Jantar", patientClinicalField(patient, "dinner", "Jantar") || "não informado"],
+    ["Ceia", patientClinicalField(patient, "supper", "Ceia") || "não informado"],
+    ["Fim de semana", patientClinicalField(patient, "weekendEating", "Fim de semana") || "não informado"],
   ];
   const observationLines = observations.flatMap((item) => [
     `${new Date(item.created_at).toLocaleDateString("pt-BR")} - ${item.category}`,
@@ -466,6 +506,7 @@ export default function Page() {
   const [selectedClientId, setSelectedClientId] = useState("");
   const [clientTab, setClientTab] = useState<"chat" | "record" | "prontuario" | "notes">("chat");
   const [observations, setObservations] = useState<Observation[]>([]);
+  const [mealPlans, setMealPlans] = useState<MealPlanArtifact[]>([]);
   const [threads, setThreads] = useState<Thread[]>([]);
   const [threadId, setThreadId] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -572,8 +613,10 @@ export default function Page() {
       api<{ observations: Observation[] }>(`/api/patients/${clientId}/observations`, accessToken),
       api<{ threads: Thread[] }>(`/api/patients/${clientId}/threads`, accessToken),
     ]);
+    const mealPlanData = await api<{ mealPlans: MealPlanArtifact[] }>(`/api/patients/${clientId}/meal-plans`, accessToken).catch(() => ({ mealPlans: [] }));
     setObservations(obs.observations);
     setThreads(threadData.threads);
+    setMealPlans(mealPlanData.mealPlans);
     const currentBelongsToClient = threadData.threads.some((thread) => thread.id === threadId);
     const nextThreadId = preferFirstThread || !threadId || !currentBelongsToClient ? threadData.threads[0]?.id || "" : threadId;
     setThreadId(nextThreadId);
@@ -649,6 +692,7 @@ export default function Page() {
     setThreadId("");
     setMessages([]);
     setObservations([]);
+    setMealPlans([]);
     setThreads([]);
     await refreshWorkspace(accessToken);
     setView("patients");
@@ -951,6 +995,30 @@ export default function Page() {
                       <dd>{selectedClient.notes || "Sem resumo clínico inicial."}</dd>
                     </div>
                   </dl>
+                  <div className="context-divider" />
+                  <h2>Planos salvos</h2>
+                  {mealPlans.length ? (
+                    <div className="artifact-list">
+                      {mealPlans.slice(0, 3).map((plan) => (
+                        <button
+                          key={plan.id}
+                          onClick={() =>
+                            selectedClient &&
+                            downloadMealPlanPdf({
+                              patient: selectedClient,
+                              content: plan.content,
+                              evidence: plan.evidence || [],
+                            })
+                          }
+                        >
+                          <strong>{plan.title}</strong>
+                          <small>v{plan.version} · {new Date(plan.updated_at).toLocaleDateString("pt-BR")}</small>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="muted-text">Planos consolidados aparecerão aqui para revisão e download.</p>
+                  )}
                 </aside>
               </div>
             )}
@@ -1305,35 +1373,35 @@ function PatientRecordPreview({ client, observations }: { client: Client; observ
     {
       title: "Avaliação antropométrica",
       rows: [
-        ["Sexo", structuredField(client.notes, "Sexo") || "Não informado"],
-        ["Peso", structuredField(client.notes, "Peso") || "Não informado"],
-        ["Altura", structuredField(client.notes, "Altura") || "Não informado"],
-        ["IMC", structuredField(client.notes, "IMC calculado") || "Não informado"],
-        ["Cintura", structuredField(client.notes, "Cintura") || "Não informado"],
-        ["Quadril", structuredField(client.notes, "Quadril") || "Não informado"],
+        ["Sexo", patientClinicalField(client, "sex", "Sexo") || "Não informado"],
+        ["Peso", patientClinicalField(client, "weightKg", "Peso") || "Não informado"],
+        ["Altura", patientClinicalField(client, "heightCm", "Altura") || "Não informado"],
+        ["IMC", patientClinicalField(client, "bmi", "IMC calculado") || "Não informado"],
+        ["Cintura", patientClinicalField(client, "waistCm", "Cintura") || "Não informado"],
+        ["Quadril", patientClinicalField(client, "hipCm", "Quadril") || "Não informado"],
       ],
     },
     {
       title: "Contexto clínico e social",
       rows: [
-        ["Condição socioeconômica", structuredField(client.notes, "Condição socioeconômica") || "Não informado"],
-        ["Rotina", structuredField(client.notes, "Rotina") || "Não informado"],
-        ["Patologias", structuredField(client.notes, "Patologias") || "Não informado"],
-        ["Medicamentos", structuredField(client.notes, "Medicamentos") || "Não informado"],
-        ["Alergias", structuredField(client.notes, "Alergias") || "Não informado"],
-        ["Restrições", structuredField(client.notes, "Restrições") || "Não informado"],
+        ["Condição socioeconômica", patientClinicalField(client, "socioeconomic", "Condição socioeconômica") || "Não informado"],
+        ["Rotina", patientClinicalField(client, "routine", "Rotina") || "Não informado"],
+        ["Patologias", patientClinicalField(client, "pathologies", "Patologias") || "Não informado"],
+        ["Medicamentos", patientClinicalField(client, "medications", "Medicamentos") || "Não informado"],
+        ["Alergias", patientClinicalField(client, "allergies", "Alergias") || "Não informado"],
+        ["Restrições", patientClinicalField(client, "restrictions", "Restrições") || "Não informado"],
       ],
     },
     {
       title: "Rotina alimentar",
       rows: [
-        ["Café da manhã", structuredField(client.notes, "Café da manhã") || "Não informado"],
-        ["Lanche da manhã", structuredField(client.notes, "Lanche da manhã") || "Não informado"],
-        ["Almoço", structuredField(client.notes, "Almoço") || "Não informado"],
-        ["Lanche da tarde", structuredField(client.notes, "Lanche da tarde") || "Não informado"],
-        ["Jantar", structuredField(client.notes, "Jantar") || "Não informado"],
-        ["Ceia", structuredField(client.notes, "Ceia") || "Não informado"],
-        ["Fim de semana", structuredField(client.notes, "Fim de semana") || "Não informado"],
+        ["Café da manhã", patientClinicalField(client, "breakfast", "Café da manhã") || "Não informado"],
+        ["Lanche da manhã", patientClinicalField(client, "morningSnack", "Lanche da manhã") || "Não informado"],
+        ["Almoço", patientClinicalField(client, "lunch", "Almoço") || "Não informado"],
+        ["Lanche da tarde", patientClinicalField(client, "afternoonSnack", "Lanche da tarde") || "Não informado"],
+        ["Jantar", patientClinicalField(client, "dinner", "Jantar") || "Não informado"],
+        ["Ceia", patientClinicalField(client, "supper", "Ceia") || "Não informado"],
+        ["Fim de semana", patientClinicalField(client, "weekendEating", "Fim de semana") || "Não informado"],
       ],
     },
   ];

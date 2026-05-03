@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireAppUser } from "@/lib/api-auth";
 import { sql } from "@/lib/db";
 import { generateProfessionalRecommendation, judgeResponse, searchEvidence } from "@/lib/ai";
+import { optionalWrite } from "@/lib/optional-db";
 
 const schema = z.object({
   topic: z.string().min(2),
@@ -14,7 +15,9 @@ export async function POST(request: NextRequest) {
   try {
     const user = await requireAppUser();
     const payload = schema.parse(await request.json());
-    const evidence = await searchEvidence(`${payload.topic}. ${payload.question}`);
+    const evidenceQuery = `${payload.topic}. ${payload.question}`;
+    const evidenceResult = await searchEvidence(evidenceQuery);
+    const evidence = evidenceResult.documents;
     let answer = await generateProfessionalRecommendation({
       topic: payload.topic,
       question: payload.question,
@@ -71,6 +74,20 @@ export async function POST(request: NextRequest) {
       similarity: doc.similarity,
       excerpt: doc.body.slice(0, 700),
     }));
+    await optionalWrite(
+      `
+      insert into public.rag_query_logs (user_id, thread_id, query, match_count, top_similarity, used_fallback)
+      values ($1, $2::uuid, $3, $4, $5, $6)
+      `,
+      [
+        user.id,
+        threadId || null,
+        evidenceQuery,
+        evidence.length,
+        evidence[0]?.similarity ?? null,
+        evidenceResult.usedFallback,
+      ]
+    );
 
     await sql(
       `
@@ -83,6 +100,21 @@ export async function POST(request: NextRequest) {
         answer,
         JSON.stringify(evidencePayload),
         JSON.stringify({ topic: payload.topic, judge, refinementCount }),
+      ]
+    );
+    await optionalWrite(
+      `
+      insert into public.ai_generation_audits (user_id, thread_id, mode, user_message, final_answer, evidence, judge, refinement_count)
+      values ($1, $2::uuid, 'professional_recommendation', $3, $4, $5::jsonb, $6::jsonb, $7)
+      `,
+      [
+        user.id,
+        threadId,
+        payload.question,
+        answer,
+        JSON.stringify(evidencePayload),
+        JSON.stringify(judge),
+        refinementCount,
       ]
     );
 

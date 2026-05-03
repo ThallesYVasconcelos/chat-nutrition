@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAppUser } from "@/lib/api-auth";
 import { sql } from "@/lib/db";
+import { ClinicalProfile, normalizeClinicalProfile } from "@/lib/clinical-profile";
+import { hasPublicTable, optionalWrite } from "@/lib/optional-db";
 
 const patchSchema = z.object({
   fullName: z.string().min(2),
@@ -10,6 +12,7 @@ const patchSchema = z.object({
   email: z.string().optional().nullable(),
   objective: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),
+  clinicalProfile: z.record(z.string()).optional().nullable(),
 });
 
 function normalizeDate(value?: string | null): string | null {
@@ -25,7 +28,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
   try {
     const user = await requireAppUser();
     const { id } = await params;
-    const rows = await sql(
+    const rows = await sql<(Record<string, unknown> & { id: string; clinical_profile?: ClinicalProfile | null })>(
       `
       select
         id::text as id,
@@ -43,7 +46,20 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
       `,
       [id, user.id]
     );
-    return NextResponse.json({ patient: rows[0] || null });
+    const patient = rows[0] || null;
+    if (patient && await hasPublicTable("patient_clinical_profiles")) {
+      const profiles = await sql<{ data: unknown }>(
+        `
+        select data
+        from public.patient_clinical_profiles
+        where patient_id = $1 and user_id = $2
+        limit 1
+        `,
+        [id, user.id]
+      );
+      patient.clinical_profile = normalizeClinicalProfile(profiles[0]?.data);
+    }
+    return NextResponse.json({ patient });
   } catch {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
@@ -53,6 +69,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   try {
     const user = await requireAppUser();
     const payload = patchSchema.parse(await request.json());
+    const clinicalProfile = normalizeClinicalProfile(payload.clinicalProfile);
     const { id } = await params;
     await sql(
       `
@@ -76,6 +93,17 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         user.id,
       ]
     );
+    if (Object.keys(clinicalProfile).length) {
+      await optionalWrite(
+        `
+        insert into public.patient_clinical_profiles (patient_id, user_id, data)
+        values ($1::uuid, $2, $3::jsonb)
+        on conflict (patient_id)
+        do update set data = excluded.data
+        `,
+        [id, user.id, JSON.stringify(clinicalProfile)]
+      );
+    }
     return NextResponse.json({ ok: true });
   } catch (error) {
     if (error instanceof z.ZodError) {

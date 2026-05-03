@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAppUser } from "@/lib/api-auth";
 import { sql } from "@/lib/db";
+import { ClinicalProfile, normalizeClinicalProfile } from "@/lib/clinical-profile";
+import { hasPublicTable, optionalWrite } from "@/lib/optional-db";
 
 const createPatientSchema = z.object({
   fullName: z.string().min(2),
@@ -10,6 +12,7 @@ const createPatientSchema = z.object({
   email: z.string().optional().nullable(),
   objective: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),
+  clinicalProfile: z.record(z.string()).optional().nullable(),
 });
 
 function normalizeDate(value?: string | null): string | null {
@@ -31,6 +34,7 @@ type PatientRow = {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  clinical_profile?: ClinicalProfile | null;
 };
 
 export async function GET() {
@@ -54,6 +58,20 @@ export async function GET() {
       `,
       [user.id]
     );
+    if (rows.length && await hasPublicTable("patient_clinical_profiles")) {
+      const profiles = await sql<{ patient_id: string; data: unknown }>(
+        `
+        select patient_id::text as patient_id, data
+        from public.patient_clinical_profiles
+        where user_id = $1 and patient_id = any($2::uuid[])
+        `,
+        [user.id, rows.map((row) => row.id)]
+      );
+      const byPatient = new Map(profiles.map((profile) => [profile.patient_id, normalizeClinicalProfile(profile.data)]));
+      rows.forEach((row) => {
+        row.clinical_profile = byPatient.get(row.id) || null;
+      });
+    }
     return NextResponse.json({ patients: rows });
   } catch {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -64,6 +82,7 @@ export async function POST(request: NextRequest) {
   try {
     const user = await requireAppUser();
     const parsed = createPatientSchema.parse(await request.json());
+    const clinicalProfile = normalizeClinicalProfile(parsed.clinicalProfile);
     const rows = await sql<{ id: string }>(
       `
       insert into public.patients (user_id, full_name, birth_date, phone, email, objective, notes)
@@ -80,6 +99,17 @@ export async function POST(request: NextRequest) {
         parsed.notes || "",
       ]
     );
+    if (Object.keys(clinicalProfile).length) {
+      await optionalWrite(
+        `
+        insert into public.patient_clinical_profiles (patient_id, user_id, data)
+        values ($1::uuid, $2, $3::jsonb)
+        on conflict (patient_id)
+        do update set data = excluded.data
+        `,
+        [rows[0]?.id, user.id, JSON.stringify(clinicalProfile)]
+      );
+    }
     return NextResponse.json({ patientId: rows[0]?.id });
   } catch (error) {
     if (error instanceof z.ZodError) {

@@ -1082,6 +1082,32 @@ button {
   margin: 3px 0 0;
 }
 
+.context-divider {
+  height: 1px;
+  background: var(--line);
+  margin: 18px 0;
+}
+
+.artifact-list {
+  display: grid;
+  gap: 8px;
+}
+
+.artifact-list button {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text);
+  border-radius: 12px;
+  padding: 11px;
+  text-align: left;
+}
+
+.artifact-list small {
+  color: var(--muted);
+}
+
 .empty-chat,
 .empty-state {
   padding: 30px;

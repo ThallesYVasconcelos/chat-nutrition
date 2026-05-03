@@ -85,7 +85,7 @@ async function embedQueryWithReplicate(query: string): Promise<number[] | null> 
   }
 }
 
-export async function searchEvidence(query: string): Promise<EvidenceDoc[]> {
+export async function searchEvidence(query: string): Promise<{ documents: EvidenceDoc[]; usedFallback: boolean }> {
   const embedding = await embedQueryWithReplicate(query);
 
   if (embedding && embedding.length) {
@@ -101,7 +101,7 @@ export async function searchEvidence(query: string): Promise<EvidenceDoc[]> {
       `,
       [JSON.stringify(embedding), env.docMatchCount, env.docMatchThreshold]
     );
-    if (rows.length > 0) return rows;
+    if (rows.length > 0) return { documents: rankEvidence(rows, query), usedFallback: false };
   }
 
   const rows = await sql<EvidenceDoc>(
@@ -120,7 +120,35 @@ export async function searchEvidence(query: string): Promise<EvidenceDoc[]> {
     `,
     [query, env.docMatchCount]
   );
-  return rows;
+  return { documents: rankEvidence(rows, query), usedFallback: true };
+}
+
+function rankEvidence(rows: EvidenceDoc[], query: string): EvidenceDoc[] {
+  const terms = Array.from(
+    new Set(
+      query
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .split(/[^a-z0-9]+/)
+        .filter((term) => term.length > 3)
+    )
+  ).slice(0, 40);
+
+  return [...rows].sort((a, b) => {
+    const scoreA = evidenceScore(a, terms);
+    const scoreB = evidenceScore(b, terms);
+    return scoreB - scoreA;
+  });
+}
+
+function evidenceScore(doc: EvidenceDoc, terms: string[]): number {
+  const text = `${doc.title} ${doc.body}`
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  const lexicalScore = terms.reduce((total, term) => total + (text.includes(term) ? 1 : 0), 0);
+  return Number(doc.similarity || 0) * 10 + lexicalScore;
 }
 
 export async function generateProfessionalRecommendation(input: {

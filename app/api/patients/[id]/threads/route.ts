@@ -3,6 +3,8 @@ import { z } from "zod";
 import { requireAppUser } from "@/lib/api-auth";
 import { sql } from "@/lib/db";
 import { generateMealPlanGuidance, judgeResponse, searchEvidence } from "@/lib/ai";
+import { normalizeClinicalProfile, profileToStructuredNotes } from "@/lib/clinical-profile";
+import { hasPublicTable, optionalWrite } from "@/lib/optional-db";
 
 const messageSchema = z.object({
   message: z.string().min(2),
@@ -66,6 +68,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       [id, user.id]
     );
     const patient = patientRows[0];
+    let clinicalProfileText = "";
+    if (await hasPublicTable("patient_clinical_profiles")) {
+      const profileRows = await sql<{ data: unknown }>(
+        `
+        select data
+        from public.patient_clinical_profiles
+        where patient_id = $1 and user_id = $2
+        limit 1
+        `,
+        [id, user.id]
+      );
+      clinicalProfileText = profileToStructuredNotes(normalizeClinicalProfile(profileRows[0]?.data));
+    }
 
     if (!threadId) {
       const created = await sql<{ id: string }>(
@@ -102,7 +117,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       [threadId, user.id]
     );
     const conversationHistory = formatHistory(recentMessages);
-    const patientNotes = sanitizePatientNotes(patient?.notes);
+    const patientNotes = sanitizePatientNotes(`${patient?.notes || ""}${clinicalProfileText}`);
     const evidenceQuery = [
       patient?.objective || "",
       patientNotes,
@@ -111,7 +126,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     ]
       .join("\n")
       .slice(-3500);
-    const evidence = await searchEvidence(evidenceQuery);
+    const evidenceResult = await searchEvidence(evidenceQuery);
+    const evidence = evidenceResult.documents;
     const evidencePayload = evidence.slice(0, 6).map((item, index) => ({
       id: `F${index + 1}`,
       title: item.title,
@@ -119,6 +135,21 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       similarity: item.similarity,
       excerpt: item.body.slice(0, 700),
     }));
+    await optionalWrite(
+      `
+      insert into public.rag_query_logs (user_id, thread_id, patient_id, query, match_count, top_similarity, used_fallback)
+      values ($1, $2::uuid, $3::uuid, $4, $5, $6, $7)
+      `,
+      [
+        user.id,
+        threadId || null,
+        id,
+        evidenceQuery,
+        evidence.length,
+        evidence[0]?.similarity ?? null,
+        evidenceResult.usedFallback,
+      ]
+    );
     let answer = await generateMealPlanGuidance({
       clientName: patient?.full_name,
       clientObjective: patient?.objective,
@@ -168,6 +199,39 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         JSON.stringify({ kind: "patient_chat_response", judge, refinementCount }),
       ]
     );
+    await optionalWrite(
+      `
+      insert into public.ai_generation_audits (user_id, thread_id, patient_id, mode, user_message, final_answer, evidence, judge, refinement_count)
+      values ($1, $2::uuid, $3::uuid, 'meal_plan', $4, $5, $6::jsonb, $7::jsonb, $8)
+      `,
+      [
+        user.id,
+        threadId,
+        id,
+        payload.message,
+        answer,
+        JSON.stringify(evidencePayload),
+        JSON.stringify(judge),
+        refinementCount,
+      ]
+    );
+
+    if (/plano alimentar|cardápio|estrutura alimentar/i.test(answer) && !answer.trim().endsWith("?")) {
+      await optionalWrite(
+        `
+        insert into public.meal_plans (user_id, patient_id, thread_id, title, content, evidence, status)
+        values ($1, $2::uuid, $3::uuid, $4, $5, $6::jsonb, 'draft')
+        `,
+        [
+          user.id,
+          id,
+          threadId,
+          `Plano alimentar - ${patient?.full_name || "paciente"}`,
+          answer,
+          JSON.stringify(evidencePayload),
+        ]
+      );
+    }
 
     await sql(
       `
